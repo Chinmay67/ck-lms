@@ -76,8 +76,6 @@ async function startServer() {
       console.log(`📱 Environment: ${config.nodeEnv}`);
       console.log(`🌐 Health check: http://localhost:${config.port}/health`);
       console.log(`⏰ Cron endpoint: POST http://localhost:${config.port}/api/cron/update-overdue-fees`);
-      console.log(config.ProdUrl)
-      console.log(config.DevUrl)
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
