@@ -2,6 +2,7 @@ import axios from 'axios';
 import type { Student, ApiResponse, PaginatedResponse, StudentFilters } from '../types/student';
 import type { Course, CourseFormData, LevelFormData } from '../types/course';
 import { getMockPaginatedStudents } from '../mocks/students';
+import { env } from '../config/env';
 
 // Toggle between mock and real API
 const USE_MOCK_DATA = false; // Set to false to use real backend
@@ -18,8 +19,8 @@ export const TokenManager = {
 
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: 'http://localhost:3000/api',
-  timeout: 10000,
+  baseURL: env.API_BASE_URL,
+  timeout: env.REQUEST_TIMEOUT,
   headers: {
     'Content-Type': 'application/json',
   },

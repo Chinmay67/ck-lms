@@ -23,7 +23,7 @@ const StudentsList = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [overdueStudents, setOverdueStudents] = useState<Record<string, boolean>>({});
+  const [_overdueStudents, setOverdueStudents] = useState<Record<string, boolean>>({});
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);

@@ -11,7 +11,7 @@ interface StudentFeesTabProps {
 
 const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
   const [fees, setFees] = useState<FeeRecord[]>([]);
-  const [course, setCourse] = useState<Course | null>(null);
+  const [_course, setCourse] = useState<Course | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);

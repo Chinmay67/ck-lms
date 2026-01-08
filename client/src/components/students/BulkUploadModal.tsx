@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { FaUpload, FaDownload, FaFileExcel, FaTimes, FaCheckCircle, FaExclamationCircle } from 'react-icons/fa';
+import { FaUpload, FaDownload, FaFileExcel, FaCheckCircle, FaExclamationCircle } from 'react-icons/fa';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import api from '../../services/api';

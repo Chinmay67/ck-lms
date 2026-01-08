@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { FeeStats, FeeRecord } from '../../types/student';
+import type { FeeStats } from '../../types/student';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { FaUsers, FaCheckCircle, FaClock, FaExclamationTriangle, FaHourglassHalf, FaUpload } from 'react-icons/fa';

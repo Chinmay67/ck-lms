@@ -1,5 +1,5 @@
-import { FaGraduationCap, FaUser, FaSignOutAlt } from 'react-icons/fa';
-import { useAuth } from '../../contexts/AuthContext';
+import {  FaUser, FaSignOutAlt } from 'react-icons/fa';
+import {useAuth } from '../../contexts/AuthContext';
 
 const Navbar = () => {
   const { user, logout } = useAuth();
