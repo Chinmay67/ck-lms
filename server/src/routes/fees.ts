@@ -1,0 +1,1213 @@
+import { Router, Request, Response } from 'express';
+import multer from 'multer';
+import xlsx from 'xlsx';
+import FeeRecord from '../models/FeeRecord';
+import Course from '../models/Course';
+import Student from '../models/Student';
+import { FeeService } from '../services/FeeService';
+import { asyncHandler } from '../middleware/errorHandler';
+import { authenticate, authorize } from '../middleware/auth';
+import { ApiResponse, IFeeRecord, FeeStats, PaginatedResponse } from '../types';
+
+const router = Router();
+
+// Configure multer for file upload (in-memory storage)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept only Excel files
+    if (
+      file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      file.mimetype === 'application/vnd.ms-excel'
+    ) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only Excel files (.xlsx, .xls) are allowed'));
+    }
+  }
+});
+
+// Apply authentication to all fee routes
+router.use(authenticate);
+// Only admin and superadmin can access fee data
+router.use(authorize('admin', 'superadmin'));
+
+// GET /api/fees - Get all fee records with filters (admin/superadmin)
+router.get('/', asyncHandler(async (req: Request, res: Response<ApiResponse<PaginatedResponse<IFeeRecord>>>) => {
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
+  const status = req.query.status as string;
+  const stage = req.query.stage as string;
+  const studentId = req.query.studentId as string;
+  const sortBy = req.query.sortBy as string || 'dueDate';
+  const sortOrder = (req.query.sortOrder as 'asc' | 'desc') || 'asc';
+
+  const query: any = {};
+  
+  if (status) {
+    query.status = status;
+  }
+  
+  if (stage) {
+    query.stage = stage;
+  }
+  
+  if (studentId) {
+    query.studentId = studentId;
+  }
+
+  const skip = (page - 1) * limit;
+  const sort: any = {};
+  sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+
+  const [data, total] = await Promise.all([
+    FeeRecord.find(query).sort(sort).skip(skip).limit(limit),
+    FeeRecord.countDocuments(query)
+  ]);
+
+  const totalPages = Math.ceil(total / limit);
+
+  return res.json({
+    success: true,
+    data: {
+      data,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalItems: total,
+        itemsPerPage: limit,
+        hasNext: page < totalPages,
+        hasPrev: page > 1
+      }
+    },
+    message: `Retrieved ${data.length} fee records`,
+    timestamp: new Date().toISOString()
+  });
+}));
+
+// GET /api/fees/student/:studentId - Get fees for specific student
+router.get('/student/:studentId', asyncHandler(async (req: Request, res: Response<ApiResponse<IFeeRecord[]>>) => {
+  const { studentId } = req.params;
+  
+  if (!studentId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Student ID is required',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  const fees = await FeeRecord.find({ studentId }).sort({ dueDate: 1 });
+  
+  return res.json({
+    success: true,
+    data: fees,
+    message: `Retrieved ${fees.length} fee records for student`,
+    timestamp: new Date().toISOString()
+  });
+}));
+
+// GET /api/fees/overdue - Get all overdue fees
+router.get('/overdue', asyncHandler(async (req: Request, res: Response<ApiResponse<IFeeRecord[]>>) => {
+  const overdueFees = await FeeRecord.find({ status: 'overdue' })
+    .sort({ dueDate: 1 })
+    .populate('studentId', 'studentName email phone');
+  
+  return res.json({
+    success: true,
+    data: overdueFees,
+    message: `Retrieved ${overdueFees.length} overdue fee records`,
+    timestamp: new Date().toISOString()
+  });
+}));
+
+// GET /api/fees/stats - Get payment statistics
+router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse<FeeStats>>) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Update overdue fees automatically (both pending and partially_paid)
+  await FeeRecord.updateMany(
+    {
+      status: { $in: ['pending', 'partially_paid'] },
+      dueDate: { $lt: today },
+      $expr: { $lt: ['$paidAmount', '$feeAmount'] } // Ensure not fully paid
+    },
+    { status: 'overdue' }
+  );
+
+  const [
+    totalCollected,
+    totalPending,
+    totalOverdue,
+    totalPartiallyPaid,
+    recentPayments,
+    allFees,
+    totalStudentsCount,
+    studentStatusCounts
+  ] = await Promise.all([
+    FeeRecord.aggregate([
+      { $match: { status: 'paid' } },
+      { $group: { _id: null, total: { $sum: '$paidAmount' } } }
+    ]),
+    FeeRecord.aggregate([
+      { $match: { status: 'pending' } },
+      { $group: { _id: null, total: { $sum: '$feeAmount' } } }
+    ]),
+    FeeRecord.aggregate([
+      { $match: { status: 'overdue' } },
+      { $group: { _id: null, total: { $sum: '$feeAmount' } } }
+    ]),
+    FeeRecord.aggregate([
+      { $match: { status: 'partially_paid' } },
+      { $group: { _id: null, total: { $sum: '$paidAmount' } } }
+    ]),
+    FeeRecord.find({ status: { $in: ['paid', 'partially_paid'] } })
+      .sort({ paymentDate: -1 })
+      .limit(10),
+    FeeRecord.find(),
+    Student.countDocuments(),
+    FeeRecord.aggregate([
+      {
+        $group: {
+          _id: '$studentId',
+          statuses: { $push: '$status' }
+        }
+      },
+      {
+        $project: {
+          studentId: '$_id',
+          hasPaid: { $in: ['paid', '$statuses'] },
+          hasPending: { $in: ['pending', '$statuses'] },
+          hasOverdue: { $in: ['overdue', '$statuses'] },
+          hasPartiallyPaid: { $in: ['partially_paid', '$statuses'] }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          paidStudents: { $sum: { $cond: ['$hasPaid', 1, 0] } },
+          pendingStudents: { $sum: { $cond: ['$hasPending', 1, 0] } },
+          overdueStudentsCount: { $sum: { $cond: ['$hasOverdue', 1, 0] } },
+          partiallyPaidStudents: { $sum: { $cond: ['$hasPartiallyPaid', 1, 0] } }
+        }
+      }
+    ])
+  ]);
+
+  // Calculate stage breakdown with student counts
+  const stageBreakdown = {
+    beginner: { collected: 0, pending: 0, overdue: 0, students: 0, paidStudents: 0 },
+    intermediate: { collected: 0, pending: 0, overdue: 0, students: 0, paidStudents: 0 },
+    advanced: { collected: 0, pending: 0, overdue: 0, students: 0, paidStudents: 0 }
+  };
+
+  const stageStudentMap = new Map();
+  
+  allFees.forEach((fee: any) => {
+    const stage = fee.stage as keyof typeof stageBreakdown;
+    if (stageBreakdown[stage]) {
+      // Track unique students per stage
+      const studentKey = `${fee.studentId}-${stage}`;
+      if (!stageStudentMap.has(studentKey)) {
+        stageStudentMap.set(studentKey, true);
+        stageBreakdown[stage].students += 1;
+      }
+      
+      // Track amounts
+      if (fee.status === 'paid') {
+        stageBreakdown[stage].collected += fee.paidAmount;
+        stageBreakdown[stage].paidStudents += 1;
+      } else if (fee.status === 'pending') {
+        stageBreakdown[stage].pending += fee.feeAmount;
+      } else if (fee.status === 'overdue') {
+        stageBreakdown[stage].overdue += fee.feeAmount;
+      }
+    }
+  });
+
+  // Calculate overdue students
+  const overdueStudentMap = new Map();
+  allFees.forEach((fee: any) => {
+    if (fee.status === 'overdue') {
+      const key = fee.studentId.toString();
+      if (!overdueStudentMap.has(key)) {
+        overdueStudentMap.set(key, {
+          studentId: fee.studentId.toString(),
+          studentName: fee.studentName,
+          stage: fee.stage,
+          level: fee.level,
+          overdueAmount: 0,
+          overdueMonths: 0
+        });
+      }
+      const student = overdueStudentMap.get(key);
+      student.overdueAmount += fee.feeAmount;
+      student.overdueMonths += 1;
+    }
+  });
+
+  const stats: FeeStats = {
+    totalCollected: totalCollected[0]?.total || 0,
+    totalPending: totalPending[0]?.total || 0,
+    totalOverdue: totalOverdue[0]?.total || 0,
+    totalPartiallyPaid: totalPartiallyPaid[0]?.total || 0,
+    totalStudents: totalStudentsCount,
+    paidStudents: studentStatusCounts[0]?.paidStudents || 0,
+    pendingStudents: studentStatusCounts[0]?.pendingStudents || 0,
+    overdueStudentsCount: studentStatusCounts[0]?.overdueStudentsCount || 0,
+    partiallyPaidStudents: studentStatusCounts[0]?.partiallyPaidStudents || 0,
+    stageBreakdown,
+    recentPayments,
+    overdueStudents: Array.from(overdueStudentMap.values())
+  };
+
+  return res.json({
+    success: true,
+    data: stats,
+    message: 'Fee statistics retrieved successfully',
+    timestamp: new Date().toISOString()
+  });
+}));
+
+// POST /api/fees - Create single or multiple fee records
+router.post('/', asyncHandler(async (req: Request, res: Response<ApiResponse<IFeeRecord | IFeeRecord[]>>) => {
+  const feeData = req.body;
+  const userId = (req as any).user.id;
+  
+  // Handle bulk creation
+  if (Array.isArray(feeData)) {
+    const createdFees: IFeeRecord[] = [];
+    const errors: Array<{ index: number; error: string }> = [];
+
+    for (let i = 0; i < feeData.length; i++) {
+      try {
+        const fee = await createFeeRecord(feeData[i], userId);
+        createdFees.push(fee);
+      } catch (error: any) {
+        errors.push({ index: i, error: error.message });
+      }
+    }
+
+    return res.status(201).json({
+      success: true,
+      data: createdFees,
+      message: `Created ${createdFees.length} fee records${errors.length > 0 ? ` with ${errors.length} errors` : ''}`,
+      timestamp: new Date().toISOString()
+    });
+  } else {
+    // Single fee record creation
+    const fee = await createFeeRecord(feeData, userId);
+    
+    return res.status(201).json({
+      success: true,
+      data: fee,
+      message: 'Fee record created successfully',
+      timestamp: new Date().toISOString()
+    });
+  }
+}));
+
+// PUT /api/fees/:id - Update fee record
+router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<IFeeRecord>>) => {
+  const { id } = req.params;
+  const updateData = req.body;
+  const userId = (req as any).user.id;
+  
+  if (!id) {
+    return res.status(400).json({
+      success: false,
+      error: 'Fee record ID is required',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  // Remove fields that shouldn't be updated directly
+  delete updateData.id;
+  delete updateData._id;
+  delete updateData.createdAt;
+  delete updateData.updatedAt;
+  delete updateData.studentId;
+  delete updateData.studentName;
+  delete updateData.stage;
+  delete updateData.level;
+  delete updateData.feeMonth;
+  delete updateData.dueDate;
+  delete updateData.feeAmount;
+  
+  // Add updatedBy
+  updateData.updatedBy = userId;
+  
+  // If transactionId is being updated, validate it
+  if (updateData.transactionId) {
+    const existingFee = await FeeRecord.findById(id);
+    if (!existingFee) {
+      return res.status(404).json({
+        success: false,
+        error: 'Fee record not found',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // Check if transactionId is used by another student
+    const duplicateTransaction = await FeeRecord.findOne({
+      transactionId: updateData.transactionId,
+      studentId: { $ne: existingFee.studentId }
+    });
+    
+    if (duplicateTransaction) {
+      return res.status(400).json({
+        success: false,
+        error: 'Transaction ID is already used by another student',
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+  
+  const fee = await FeeRecord.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
+  
+  if (!fee) {
+    return res.status(404).json({
+      success: false,
+      error: 'Fee record not found',
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  return res.json({
+    success: true,
+    data: fee,
+    message: 'Fee record updated successfully',
+    timestamp: new Date().toISOString()
+  });
+}));
+
+// DELETE /api/fees/:id - Delete fee record
+router.delete('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const { id } = req.params;
+  
+  if (!id) {
+    return res.status(400).json({
+      success: false,
+      error: 'Fee record ID is required',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  const deleted = await FeeRecord.findByIdAndDelete(id);
+  
+  if (!deleted) {
+    return res.status(404).json({
+      success: false,
+      error: 'Fee record not found',
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  return res.json({
+    success: true,
+    message: 'Fee record deleted successfully',
+    timestamp: new Date().toISOString()
+  });
+}));
+
+// POST /api/fees/bulk-payment - Record payment for multiple months
+router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<ApiResponse<IFeeRecord[]>>) => {
+  const { studentId, months, paymentDate, paymentMethod, transactionId, remarks, paidAmount } = req.body;
+  const userId = (req as any).user.id;
+  
+  // Validation
+  if (!studentId || !months || !Array.isArray(months) || months.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Student ID and months array are required',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  if (!paymentDate || !paymentMethod) {
+    return res.status(400).json({
+      success: false,
+      error: 'Payment date and payment method are required',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  // Get student details
+  const student = await Student.findById(studentId);
+  if (!student) {
+    return res.status(404).json({
+      success: false,
+      error: 'Student not found',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  // Get course configuration for student's stage
+  const course = await Course.findOne({ 
+    courseName: student.stage || student.skillCategory,
+    isActive: true 
+  });
+  
+  if (!course || course.levels.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Course configuration not found for student\'s stage',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  // Get fee amount from the first level (or use student's level if available)
+  const studentLevel = student.level || student.skillLevel || 1;
+  const levelConfig = course.levels.find(l => l.levelNumber === studentLevel) || course.levels[0];
+  
+  if (!levelConfig) {
+    return res.status(400).json({
+      success: false,
+      error: 'No level configuration found for course',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  const feeAmount = levelConfig.feeAmount;
+  
+  // Validate transaction ID if provided
+  if (transactionId) {
+    // Check if transactionId is used by another student
+    const duplicateTransaction = await FeeRecord.findOne({
+      transactionId,
+      studentId: { $ne: studentId }
+    });
+    
+    if (duplicateTransaction) {
+      return res.status(400).json({
+        success: false,
+        error: 'Transaction ID is already used by another student',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // Check if months are consecutive for the same transaction ID
+    const sortedMonths = [...months].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+    for (let i = 1; i < sortedMonths.length; i++) {
+      const prevMonth = new Date(sortedMonths[i - 1].dueDate);
+      const currMonth = new Date(sortedMonths[i].dueDate);
+      const monthDiff = (currMonth.getMonth() - prevMonth.getMonth()) + 
+                        (currMonth.getFullYear() - prevMonth.getFullYear()) * 12;
+      
+      if (monthDiff !== 1) {
+        return res.status(400).json({
+          success: false,
+          error: 'Months must be consecutive when using the same transaction ID',
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+  }
+  
+  // Create fee records for each month
+  const createdFees: IFeeRecord[] = [];
+  const errors: Array<{ month: string; error: string }> = [];
+  
+  for (const monthData of months) {
+    try {
+      // Check if fee record already exists
+      const existingFee = await FeeRecord.findOne({
+        studentId,
+        feeMonth: monthData.feeMonth
+      });
+      
+      if (existingFee) {
+        // Update existing fee record
+        const amountToPay = paidAmount || feeAmount;
+        existingFee.paidAmount = Math.min(existingFee.paidAmount + amountToPay, feeAmount);
+        existingFee.paymentDate = new Date(paymentDate);
+        existingFee.paymentMethod = paymentMethod;
+        existingFee.transactionId = transactionId;
+        existingFee.remarks = remarks;
+        existingFee.updatedBy = userId;
+        
+        // Update status based on paid amount
+        if (existingFee.paidAmount >= feeAmount) {
+          existingFee.status = 'paid';
+        } else if (existingFee.paidAmount > 0) {
+          existingFee.status = 'partially_paid';
+        }
+        
+        await existingFee.save();
+        createdFees.push(existingFee);
+      } else {
+        // Create new fee record
+        const amountToPay = paidAmount || feeAmount;
+        const status = amountToPay >= feeAmount ? 'paid' : 'partially_paid';
+        
+        const fee = await FeeRecord.create({
+          studentId,
+          studentName: student.studentName,
+          stage: student.stage || student.skillCategory,
+          level: student.level || student.skillLevel,
+          feeMonth: monthData.feeMonth,
+          dueDate: new Date(monthData.dueDate),
+          status,
+          feeAmount: feeAmount,
+          paidAmount: amountToPay,
+          paymentDate: new Date(paymentDate),
+          paymentMethod,
+          transactionId,
+          remarks,
+          updatedBy: userId
+        });
+        createdFees.push(fee);
+      }
+    } catch (error: any) {
+      errors.push({ month: monthData.feeMonth, error: error.message });
+    }
+  }
+  
+  // Automatically generate the next month's fee after payment
+  try {
+    await FeeService.generateNextMonthFee(studentId);
+  } catch (error: any) {
+    console.warn(`Failed to generate next month fee for student ${studentId}: ${error.message}`);
+    // Don't fail the payment if fee generation fails
+  }
+  
+  return res.status(201).json({
+    success: true,
+    data: createdFees,
+    message: `Recorded payment for ${createdFees.length} months${errors.length > 0 ? ` with ${errors.length} errors` : ''}`,
+    timestamp: new Date().toISOString()
+  });
+}));
+
+// Helper function to create a fee record
+async function createFeeRecord(data: any, userId: string): Promise<IFeeRecord> {
+  const { studentId, feeMonth, dueDate, status, feeAmount, paidAmount, paymentDate, paymentMethod, transactionId, remarks } = data;
+  
+  // Validation
+  if (!studentId || !feeMonth || !dueDate || !feeAmount) {
+    throw new Error('Student ID, fee month, due date, and fee amount are required');
+  }
+  
+  // Get student details
+  const student = await Student.findById(studentId);
+  if (!student) {
+    throw new Error('Student not found');
+  }
+  
+  // Check if fee record already exists for this student and month
+  const existingFee = await FeeRecord.findOne({ studentId, feeMonth });
+  if (existingFee) {
+    throw new Error(`Fee record already exists for ${feeMonth}`);
+  }
+  
+  // Validate transaction ID if provided
+  if (transactionId) {
+    const duplicateTransaction = await FeeRecord.findOne({
+      transactionId,
+      studentId: { $ne: studentId }
+    });
+    
+    if (duplicateTransaction) {
+      throw new Error('Transaction ID is already used by another student');
+    }
+  }
+  
+  // Create fee record
+  const fee = await FeeRecord.create({
+    studentId,
+    studentName: student.studentName,
+    stage: student.stage || student.skillCategory,
+    level: student.level || student.skillLevel,
+    feeMonth,
+    dueDate: new Date(dueDate),
+    status: status || 'pending',
+    feeAmount,
+    paidAmount: paidAmount || 0,
+    paymentDate: paymentDate ? new Date(paymentDate) : undefined,
+    paymentMethod,
+    transactionId,
+    remarks,
+    updatedBy: userId
+  });
+  
+  return fee;
+}
+
+// POST /api/fees/generate-pending/:studentId - Generate pending fees for a specific student
+router.post('/generate-pending/:studentId', asyncHandler(async (req: Request, res: Response<ApiResponse<IFeeRecord[]>>) => {
+  const { studentId } = req.params;
+  const { startMonth, monthsToGenerate } = req.body;
+  
+  if (!studentId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Student ID is required',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  // Validate student exists
+  const student = await Student.findById(studentId);
+  if (!student) {
+    return res.status(404).json({
+      success: false,
+      error: 'Student not found',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  try {
+    const fees = await FeeService.generateUpcomingFeesForStudent(
+      studentId,
+      startMonth ? new Date(startMonth) : undefined,
+      monthsToGenerate || 3
+    );
+    
+    return res.status(201).json({
+      success: true,
+      data: fees,
+      message: `Generated ${fees.length} pending fee records for student`,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    return res.status(400).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+}));
+
+// POST /api/fees/generate-pending-all - Generate pending fees for all students without fee records
+router.post('/generate-pending-all', asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const { monthsToGenerate } = req.body;
+  
+  try {
+    const results = await FeeService.generateUpcomingFeesForAllStudents(
+      monthsToGenerate || 3
+    );
+    
+    return res.status(201).json({
+      success: true,
+      data: results,
+      message: `Generated pending fees for ${results.successful} students${results.failed > 0 ? ` (${results.failed} failed)` : ''}`,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+}));
+
+// GET /api/fees/students-overdue-status - Get overdue status for all students
+router.get('/students-overdue-status', asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  try {
+    // Get all students with overdue fees
+    const overdueRecords = await FeeRecord.find({ status: 'overdue' }).distinct('studentId');
+    
+    // Create a map of student IDs with overdue fees
+    const overdueMap: Record<string, boolean> = {};
+    overdueRecords.forEach((studentId: any) => {
+      overdueMap[studentId.toString()] = true;
+    });
+    
+    return res.json({
+      success: true,
+      data: overdueMap,
+      message: 'Retrieved overdue status for students',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+}));
+
+// GET /api/fees/payable/:studentId - Get payable fees for a student (overdue + one next pending)
+router.get('/payable/:studentId', asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const { studentId } = req.params;
+  
+  if (!studentId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Student ID is required',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  try {
+    const payableFees = await FeeService.getPayableFees(studentId);
+    
+    return res.json({
+      success: true,
+      data: payableFees,
+      message: 'Retrieved payable fees for student',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+}));
+
+// Helper function to clean phone number
+const cleanPhoneNumber = (phone: string | number): string | null => {
+  if (!phone) return null;
+  
+  // Convert to string and remove all non-digit characters
+  const cleaned = String(phone).replace(/\D/g, '');
+  
+  // Check if it's a valid 10-digit Indian mobile number
+  if (cleaned.length === 10 && /^[6-9]/.test(cleaned)) {
+    return cleaned;
+  }
+  
+  return null;
+};
+
+// Helper function to parse Excel date
+const parseExcelDate = (dateValue: any): Date | null => {
+  if (!dateValue || dateValue === 'nan' || String(dateValue).toLowerCase() === 'nan') {
+    return null;
+  }
+
+  try {
+    // Case 1: Already a Date object from xlsx
+    if (dateValue instanceof Date) {
+      return dateValue;
+    }
+    // Case 2: Excel serial date (number)
+    else if (typeof dateValue === 'number') {
+      // Excel serial date: days since 1900-01-01 (with leap year bug)
+      const excelEpoch = new Date(1900, 0, 1);
+      const daysOffset = dateValue - 2; // Adjust for Excel's leap year bug
+      return new Date(excelEpoch.getTime() + daysOffset * 24 * 60 * 60 * 1000);
+    }
+    // Case 3: String format
+    else if (typeof dateValue === 'string') {
+      const dateStr = dateValue.trim();
+      // Try to parse yyyy-mm-dd format explicitly
+      const ymdMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (ymdMatch && ymdMatch[1] && ymdMatch[2] && ymdMatch[3]) {
+        const year = parseInt(ymdMatch[1]);
+        const month = parseInt(ymdMatch[2]);
+        const day = parseInt(ymdMatch[3]);
+        return new Date(year, month - 1, day);
+      } else {
+        // Try standard Date parsing as fallback
+        const parsed = new Date(dateStr);
+        if (!isNaN(parsed.getTime())) {
+          return parsed;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn(`Failed to parse date: ${dateValue}`);
+  }
+  
+  return null;
+};
+
+// Helper function to normalize payment status
+const normalizePaymentStatus = (status: any): 'pending' | 'paid' | 'overdue' | 'partially_paid' | 'discontinued' => {
+  if (!status || status === 'nan' || String(status).toLowerCase() === 'nan' || String(status).trim() === '') {
+    return 'pending';
+  }
+  
+  const statusStr = String(status).toLowerCase().trim();
+  
+  if (statusStr === 'paid' || statusStr === 'Paid' || statusStr === 'PAID') {
+    return 'paid';
+  }
+  
+  if (statusStr === 'discontinued' || statusStr === 'DISCONTINUED') {
+    return 'discontinued';
+  }
+  
+  if (statusStr === 'ab' || statusStr === 'AB') {
+    return 'pending'; // AB (absent) treated as pending
+  }
+  
+  return 'pending';
+};
+
+// GET /api/fees/download-template - Download Excel template for bulk fee upload
+router.get('/download-template', asyncHandler(async (req: Request, res: Response) => {
+  try {
+    // Create template data matching the user's Excel format
+    const templateData = [
+      {
+        'student_identifier': '9876543210',
+        'Payment Due date': '2025-10-25',
+        'Payment Status': 'PAID',
+        'Payment date': '2025-10-25',
+        'Payment Due date.1': '2025-11-25',
+        'Payment Status.1': 'PAID',
+        'Payment date.1': '2025-11-25',
+        'Payment Due date.2': '2025-12-25',
+        'Payment Status.2': 'PAID',
+        'Payment date.2': '2025-12-25',
+        'Payment Due date.3': '2026-01-25',
+        'Payment Status.3': 'pending',
+        'Payment date.3': ''
+      },
+      {
+        'student_identifier': '9123456789',
+        'Payment Due date': '2025-10-25',
+        'Payment Status': 'PAID',
+        'Payment date': '2025-10-20',
+        'Payment Due date.1': '2025-11-25',
+        'Payment Status.1': '',
+        'Payment date.1': '',
+        'Payment Due date.2': '2025-12-25',
+        'Payment Status.2': '',
+        'Payment date.2': '',
+        'Payment Due date.3': '2026-01-25',
+        'Payment Status.3': '',
+        'Payment date.3': ''
+      }
+    ];
+
+    // Create workbook and worksheet
+    const wb = xlsx.utils.book_new();
+    const ws = xlsx.utils.json_to_sheet(templateData);
+
+    // Set column widths
+    const colWidths = [
+      { wch: 20 }, // student_identifier
+      { wch: 18 }, // Payment Due date
+      { wch: 15 }, // Payment Status
+      { wch: 18 }, // Payment date
+      { wch: 18 }, // Payment Due date.1
+      { wch: 15 }, // Payment Status.1
+      { wch: 18 }, // Payment date.1
+      { wch: 18 }, // Payment Due date.2
+      { wch: 15 }, // Payment Status.2
+      { wch: 18 }, // Payment date.2
+      { wch: 18 }, // Payment Due date.3
+      { wch: 15 }, // Payment Status.3
+      { wch: 18 }  // Payment date.3
+    ];
+    ws['!cols'] = colWidths;
+
+    xlsx.utils.book_append_sheet(wb, ws, 'Fees Template');
+
+    // Generate buffer
+    const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    // Set headers
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=fees-template.xlsx');
+
+    res.send(buffer);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate template',
+      timestamp: new Date().toISOString()
+    });
+  }
+}));
+
+// POST /api/fees/bulk-upload - Bulk upload fees from Excel
+router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const userId = (req as any).user.id;
+
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      error: 'No file uploaded',
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  try {
+    // Parse Excel file
+    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) {
+      return res.status(400).json({
+        success: false,
+        error: 'No sheet found in the Excel file',
+        timestamp: new Date().toISOString()
+      });
+    }
+    const worksheet = workbook.Sheets[sheetName];
+    if (!worksheet) {
+      return res.status(400).json({
+        success: false,
+        error: 'No worksheet found in the Excel file',
+        timestamp: new Date().toISOString()
+      });
+    }
+    const data = xlsx.utils.sheet_to_json(worksheet);
+
+    if (!data || data.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No data found in the Excel file',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const results = {
+      total: data.length,
+      successful: 0,
+      updated: 0,
+      studentsNotFound: 0,
+      skipped: 0,
+      errors: [] as Array<{ row: number; phone: string; error: string; data: any }>
+    };
+
+    // Process each row
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i] as any;
+      const rowNum = i + 2; // Excel row numbers start from 1, plus header row
+
+      try {
+        // Get student identifier (phone number)
+        const studentIdentifier = row['student_identifier'];
+        
+        // Clean and validate phone number
+        const cleanedPhone = cleanPhoneNumber(studentIdentifier);
+        if (!cleanedPhone) {
+          results.skipped++;
+          results.errors.push({
+            row: rowNum,
+            phone: String(studentIdentifier || 'N/A'),
+            error: 'Invalid or missing phone number',
+            data: { studentIdentifier }
+          });
+          continue;
+        }
+
+        // Find student by phone number
+        const student = await Student.findOne({ phone: cleanedPhone });
+        if (!student) {
+          results.studentsNotFound++;
+          results.errors.push({
+            row: rowNum,
+            phone: cleanedPhone,
+            error: 'Student not found in database',
+            data: { studentIdentifier }
+          });
+          continue;
+        }
+
+        // Get course configuration for fee amount
+        const stage = student.stage || student.skillCategory;
+        if (!stage) {
+          results.skipped++;
+          results.errors.push({
+            row: rowNum,
+            phone: cleanedPhone,
+            error: 'Student has no stage/skillCategory',
+            data: { studentName: student.studentName }
+          });
+          continue;
+        }
+
+        const course = await Course.findOne({ 
+          courseName: stage, 
+          isActive: true 
+        });
+
+        if (!course || course.levels.length === 0) {
+          results.skipped++;
+          results.errors.push({
+            row: rowNum,
+            phone: cleanedPhone,
+            error: `No active course configuration found for stage: ${stage}`,
+            data: { studentName: student.studentName, stage }
+          });
+          continue;
+        }
+
+        const studentLevel = student.level || student.skillLevel || 1;
+        const levelConfig = course.levels.find(l => l.levelNumber === studentLevel) || course.levels[0];
+        
+        if (!levelConfig) {
+          results.skipped++;
+          results.errors.push({
+            row: rowNum,
+            phone: cleanedPhone,
+            error: 'No level configuration found',
+            data: { studentName: student.studentName }
+          });
+          continue;
+        }
+
+        const feeAmount = levelConfig.feeAmount;
+        let discontinuedStudent = false;
+
+        // Process up to 4 payment cycles
+        const cycles = [
+          { dueDate: row['Payment Due date'], status: row['Payment Status'], paymentDate: row['Payment date'] },
+          { dueDate: row['Payment Due date.1'], status: row['Payment Status.1'], paymentDate: row['Payment date.1'] },
+          { dueDate: row['Payment Due date.2'], status: row['Payment Status.2'], paymentDate: row['Payment date.2'] },
+          { dueDate: row['Payment Due date.3'], status: row['Payment Status.3'], paymentDate: row['Payment date.3'] }
+        ];
+
+        for (const cycle of cycles) {
+          // Skip if due date is empty
+          const dueDate = parseExcelDate(cycle.dueDate);
+          if (!dueDate) {
+            continue;
+          }
+
+          // Generate fee month name
+          const feeMonth = FeeService.generateFeeMonthName(dueDate);
+
+          // Normalize status
+          const status = normalizePaymentStatus(cycle.status);
+          
+          // Check for DISCONTINUED status
+          if (status === 'discontinued') {
+            discontinuedStudent = true;
+            // Create this fee record as paid, but skip future pending records
+            const parsedPaymentDate = parseExcelDate(cycle.paymentDate) || dueDate;
+
+            // Check if fee record exists
+            const existingFee = await FeeRecord.findOne({
+              studentId: (student._id as any).toString(),
+              feeMonth
+            });
+
+            if (existingFee) {
+              // Update existing
+              existingFee.status = 'paid';
+              existingFee.paidAmount = feeAmount;
+              existingFee.paymentDate = parsedPaymentDate;
+              existingFee.paymentMethod = 'cash';
+              existingFee.updatedBy = userId;
+              await existingFee.save();
+              results.updated++;
+            } else {
+              // Create new
+              await FeeRecord.create({
+                studentId: (student._id as any).toString(),
+                studentName: student.studentName,
+                stage,
+                level: student.level || student.skillLevel,
+                feeMonth,
+                dueDate,
+                status: 'paid',
+                feeAmount,
+                paidAmount: feeAmount,
+                paymentDate: parsedPaymentDate,
+                paymentMethod: 'cash',
+                updatedBy: userId
+              });
+              results.successful++;
+            }
+            break; // Don't process further cycles for discontinued students
+          }
+
+          // Parse payment date
+          const parsedPaymentDate = parseExcelDate(cycle.paymentDate);
+
+          // Determine final status and paid amount
+          let finalStatus: 'pending' | 'paid' | 'overdue' | 'partially_paid' = status === 'paid' ? 'paid' : 'pending';
+          let paidAmount = 0;
+          
+          if (status === 'paid') {
+            paidAmount = feeAmount;
+            finalStatus = 'paid';
+          } else {
+            // Check if it's overdue
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (dueDate < today) {
+              finalStatus = 'overdue';
+            } else {
+              finalStatus = 'pending';
+            }
+          }
+
+          // Check if fee record already exists
+          const existingFee = await FeeRecord.findOne({
+            studentId: (student._id as any).toString(),
+            feeMonth
+          });
+
+          if (existingFee) {
+            // Update existing fee record
+            existingFee.status = finalStatus;
+            existingFee.paidAmount = paidAmount;
+            if (parsedPaymentDate) {
+              existingFee.paymentDate = parsedPaymentDate;
+            }
+            if (status === 'paid') {
+              existingFee.paymentMethod = existingFee.paymentMethod || 'cash';
+            }
+            existingFee.updatedBy = userId;
+            await existingFee.save();
+            results.updated++;
+          } else {
+            // Create new fee record
+            const feeData: any = {
+              studentId: (student._id as any).toString(),
+              studentName: student.studentName,
+              stage,
+              level: student.level || student.skillLevel,
+              feeMonth,
+              dueDate,
+              status: finalStatus,
+              feeAmount,
+              paidAmount,
+              updatedBy: userId
+            };
+
+            if (parsedPaymentDate) {
+              feeData.paymentDate = parsedPaymentDate;
+            }
+
+            if (status === 'paid') {
+              feeData.paymentMethod = 'cash';
+            }
+
+            await FeeRecord.create(feeData);
+            results.successful++;
+          }
+        }
+
+      } catch (error: any) {
+        results.errors.push({
+          row: rowNum,
+          phone: String(row['student_identifier'] || 'N/A'),
+          error: error.message,
+          data: row
+        });
+      }
+    }
+
+    return res.json({
+      success: true,
+      data: results,
+      message: `Bulk upload completed: ${results.successful} fee records created, ${results.updated} updated, ${results.studentsNotFound} students not found, ${results.skipped} skipped`,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: `Failed to process Excel file: ${error.message}`,
+      timestamp: new Date().toISOString()
+    });
+  }
+}));
+
+export default router;

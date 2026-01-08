@@ -1,0 +1,113 @@
+export interface Student {
+  _id: string;
+  studentName: string;
+  dob?: string;
+  parentName?: string;
+  email: string;
+  phone?: string;
+  alternatePhone?: string;
+  alternateEmail?: string;
+  address?: string;
+  combinedSkill?: string;
+  skillCategory?: 'beginner' | 'intermediate' | 'advanced';
+  skillLevel?: 1 | 2 | 3;
+  stage?: 'beginner' | 'intermediate' | 'advanced';
+  level?: 1 | 2 | 3;
+  batch?: string;
+  referredBy?: string;
+  emailId?: string;
+  enrollmentDate: string;
+  isActive: boolean;
+  hasOverdueFees?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  message?: string;
+  error?: string;
+  timestamp: string;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalItems: number;
+    itemsPerPage: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+}
+
+export interface StudentFilters {
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  search?: string;
+  stage?: string; // Course name (maps to course.courseName)
+  isActive?: boolean; // Filter by active/inactive status
+}
+
+export interface FeeRecord {
+  _id: string;
+  studentId: string;
+  studentName: string;
+  stage: 'beginner' | 'intermediate' | 'advanced';
+  level: 1 | 2 | 3;
+  feeMonth: string;
+  dueDate: string;
+  status: 'upcoming' | 'paid' | 'overdue' | 'partially_paid';
+  feeAmount: number;
+  paidAmount: number;
+  paymentDate?: string;
+  paymentMethod?: 'cash' | 'online' | 'card' | 'upi' | 'other';
+  transactionId?: string;
+  paymentScreenshot?: string;
+  remarks?: string;
+  updatedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+  remainingAmount?: number;
+  paymentPercentage?: number;
+}
+
+export interface FeeStats {
+  totalCollected: number;
+  totalUpcoming: number;
+  totalOverdue: number;
+  totalPartiallyPaid: number;
+  totalStudents: number;
+  paidStudents: number;
+  upcomingStudents: number;
+  overdueStudentsCount: number;
+  partiallyPaidStudents: number;
+  stageBreakdown: {
+    beginner: { collected: number; upcoming: number; overdue: number; students: number; paidStudents: number };
+    intermediate: { collected: number; upcoming: number; overdue: number; students: number; paidStudents: number };
+    advanced: { collected: number; upcoming: number; overdue: number; students: number; paidStudents: number };
+  };
+  recentPayments: FeeRecord[];
+  overdueStudents: Array<{
+    studentId: string;
+    studentName: string;
+    stage: string;
+    level: number;
+    overdueAmount: number;
+    overdueMonths: number;
+  }>;
+}
+
+export interface FeeFilters {
+  page?: number;
+  limit?: number;
+  status?: string;
+  stage?: string;
+  studentId?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
