@@ -31,6 +31,8 @@ export const config = {
     
     // Environment
     nodeEnv: process.env.NODE_ENV || 'development',
+    DevUrl:process.env.DEV_FRONTEND_URL || 'http://localhost:5173',
+    ProdUrl:process.env.PROD_FRONTEND_URL,
     
     // Email Sync Configuration
     emailSyncInterval: parseInt(process.env.EMAIL_SYNC_INTERVAL || '300000', 10), // 5 minutes default

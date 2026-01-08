@@ -18,8 +18,8 @@ const app = express();
 app.use(helmet());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://yourdomain.com'] // Replace with actual frontend domain
-    : ['http://localhost:3000', 'http://localhost:5173'], // Common dev ports
+    ? config.ProdUrl // Replace with actual frontend domain
+    : config.DevUrl, // Common dev ports
   credentials: true
 }));
 
