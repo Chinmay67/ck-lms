@@ -1,5 +1,5 @@
 import mongoose, { Schema } from 'mongoose';
-import { ICourse } from '../types/index.js';
+import { ICourse, ICourseLevel } from '../types/index.js';
 
 const CourseLevelSchema = new Schema({
   levelNumber: {
@@ -96,13 +96,13 @@ CourseSchema.virtual('numberOfLevels').get(function() {
 
 // Method to get fee for a specific level
 CourseSchema.methods.getFeeForLevel = function(levelNumber: number): number | null {
-  const level = this.levels.find(l => l.levelNumber === levelNumber);
+  const level = this.levels.find((l: ICourseLevel) => l.levelNumber === levelNumber);
   return level ? level.feeAmount : null;
 };
 
 // Method to check if level exists
 CourseSchema.methods.hasLevel = function(levelNumber: number): boolean {
-  return this.levels.some(l => l.levelNumber === levelNumber);
+  return this.levels.some((l: ICourseLevel) => l.levelNumber === levelNumber);
 };
 
 // Ensure virtual fields are serialized

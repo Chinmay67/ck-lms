@@ -129,10 +129,10 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Update overdue fees automatically (both pending and partially_paid)
+  // Update overdue fees automatically (both upcoming and partially_paid)
   await FeeRecord.updateMany(
     {
-      status: { $in: ['pending', 'partially_paid'] },
+      status: { $in: ['upcoming', 'partially_paid'] },
       dueDate: { $lt: today },
       $expr: { $lt: ['$paidAmount', '$feeAmount'] } // Ensure not fully paid
     },
@@ -141,7 +141,7 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
 
   const [
     totalCollected,
-    totalPending,
+    totalUpcoming,
     totalOverdue,
     totalPartiallyPaid,
     recentPayments,
@@ -154,7 +154,7 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
       { $group: { _id: null, total: { $sum: '$paidAmount' } } }
     ]),
     FeeRecord.aggregate([
-      { $match: { status: 'pending' } },
+      { $match: { status: 'upcoming' } },
       { $group: { _id: null, total: { $sum: '$feeAmount' } } }
     ]),
     FeeRecord.aggregate([
@@ -181,7 +181,7 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
         $project: {
           studentId: '$_id',
           hasPaid: { $in: ['paid', '$statuses'] },
-          hasPending: { $in: ['pending', '$statuses'] },
+          hasUpcoming: { $in: ['upcoming', '$statuses'] },
           hasOverdue: { $in: ['overdue', '$statuses'] },
           hasPartiallyPaid: { $in: ['partially_paid', '$statuses'] }
         }
@@ -190,7 +190,7 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
         $group: {
           _id: null,
           paidStudents: { $sum: { $cond: ['$hasPaid', 1, 0] } },
-          pendingStudents: { $sum: { $cond: ['$hasPending', 1, 0] } },
+          upcomingStudents: { $sum: { $cond: ['$hasUpcoming', 1, 0] } },
           overdueStudentsCount: { $sum: { $cond: ['$hasOverdue', 1, 0] } },
           partiallyPaidStudents: { $sum: { $cond: ['$hasPartiallyPaid', 1, 0] } }
         }
@@ -200,9 +200,9 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
 
   // Calculate stage breakdown with student counts
   const stageBreakdown = {
-    beginner: { collected: 0, pending: 0, overdue: 0, students: 0, paidStudents: 0 },
-    intermediate: { collected: 0, pending: 0, overdue: 0, students: 0, paidStudents: 0 },
-    advanced: { collected: 0, pending: 0, overdue: 0, students: 0, paidStudents: 0 }
+    beginner: { collected: 0, upcoming: 0, overdue: 0, students: 0, paidStudents: 0 },
+    intermediate: { collected: 0, upcoming: 0, overdue: 0, students: 0, paidStudents: 0 },
+    advanced: { collected: 0, upcoming: 0, overdue: 0, students: 0, paidStudents: 0 }
   };
 
   const stageStudentMap = new Map();
@@ -221,8 +221,8 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
       if (fee.status === 'paid') {
         stageBreakdown[stage].collected += fee.paidAmount;
         stageBreakdown[stage].paidStudents += 1;
-      } else if (fee.status === 'pending') {
-        stageBreakdown[stage].pending += fee.feeAmount;
+      } else if (fee.status === 'upcoming') {
+        stageBreakdown[stage].upcoming += fee.feeAmount;
       } else if (fee.status === 'overdue') {
         stageBreakdown[stage].overdue += fee.feeAmount;
       }
@@ -252,12 +252,12 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
 
   const stats: FeeStats = {
     totalCollected: totalCollected[0]?.total || 0,
-    totalPending: totalPending[0]?.total || 0,
+    totalUpcoming: totalUpcoming[0]?.total || 0,
     totalOverdue: totalOverdue[0]?.total || 0,
     totalPartiallyPaid: totalPartiallyPaid[0]?.total || 0,
     totalStudents: totalStudentsCount,
     paidStudents: studentStatusCounts[0]?.paidStudents || 0,
-    pendingStudents: studentStatusCounts[0]?.pendingStudents || 0,
+    upcomingStudents: studentStatusCounts[0]?.upcomingStudents || 0,
     overdueStudentsCount: studentStatusCounts[0]?.overdueStudentsCount || 0,
     partiallyPaidStudents: studentStatusCounts[0]?.partiallyPaidStudents || 0,
     stageBreakdown,
@@ -624,7 +624,7 @@ async function createFeeRecord(data: any, userId: string): Promise<IFeeRecord> {
     level: student.level || student.skillLevel,
     feeMonth,
     dueDate: new Date(dueDate),
-    status: status || 'pending',
+    status: status || 'upcoming',
     feeAmount,
     paidAmount: paidAmount || 0,
     paymentDate: paymentDate ? new Date(paymentDate) : undefined,
@@ -822,9 +822,9 @@ const parseExcelDate = (dateValue: any): Date | null => {
 };
 
 // Helper function to normalize payment status
-const normalizePaymentStatus = (status: any): 'pending' | 'paid' | 'overdue' | 'partially_paid' | 'discontinued' => {
+const normalizePaymentStatus = (status: any): 'upcoming' | 'paid' | 'overdue' | 'partially_paid' | 'discontinued' => {
   if (!status || status === 'nan' || String(status).toLowerCase() === 'nan' || String(status).trim() === '') {
-    return 'pending';
+    return 'upcoming';
   }
   
   const statusStr = String(status).toLowerCase().trim();
@@ -838,10 +838,10 @@ const normalizePaymentStatus = (status: any): 'pending' | 'paid' | 'overdue' | '
   }
   
   if (statusStr === 'ab' || statusStr === 'AB') {
-    return 'pending'; // AB (absent) treated as pending
+    return 'upcoming'; // AB (absent) treated as upcoming
   }
   
-  return 'pending';
+  return 'upcoming';
 };
 
 // GET /api/fees/download-template - Download Excel template for bulk fee upload
@@ -1120,7 +1120,7 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
           const parsedPaymentDate = parseExcelDate(cycle.paymentDate);
 
           // Determine final status and paid amount
-          let finalStatus: 'pending' | 'paid' | 'overdue' | 'partially_paid' = status === 'paid' ? 'paid' : 'pending';
+          let finalStatus: 'upcoming' | 'paid' | 'overdue' | 'partially_paid' = status === 'paid' ? 'paid' : 'upcoming';
           let paidAmount = 0;
           
           if (status === 'paid') {
@@ -1133,7 +1133,7 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
             if (dueDate < today) {
               finalStatus = 'overdue';
             } else {
-              finalStatus = 'pending';
+              finalStatus = 'upcoming';
             }
           }
 
