@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
-import Course from '../models/Course';
-import Student from '../models/Student';
-import { asyncHandler } from '../middleware/errorHandler';
-import { authenticate, authorize } from '../middleware/auth';
-import { ApiResponse, ICourse } from '../types';
+import Course from '../models/Course.js';
+import Student from '../models/Student.js';
+import { asyncHandler } from '../middleware/errorHandler.js';
+import { authenticate, authorize } from '../middleware/auth.js';
+import { ApiResponse, ICourse } from '../types/index.js';
 
 const router = Router();
 
@@ -308,7 +308,7 @@ router.post('/:id/levels', authorize('superadmin'), asyncHandler(async (req: Req
   });
   
   // Sort levels by levelNumber
-  course.levels.sort((a, b) => a.levelNumber - b.levelNumber);
+  course.levels.sort((a: any, b: any) => a.levelNumber - b.levelNumber);
   
   await course.save();
   
@@ -345,7 +345,7 @@ router.put('/:id/levels/:levelNumber', authorize('superadmin'), asyncHandler(asy
     });
   }
   
-  const levelIndex = course.levels.findIndex(l => l.levelNumber === levelNum);
+  const levelIndex = course.levels.findIndex((l: any) => l.levelNumber === levelNum);
   if (levelIndex === -1) {
     return res.status(404).json({
       success: false,
@@ -441,7 +441,7 @@ router.delete('/:id/levels/:levelNumber', authorize('superadmin'), asyncHandler(
     });
   }
   
-  const levelIndex = course.levels.findIndex(l => l.levelNumber === levelNum);
+  const levelIndex = course.levels.findIndex((l: any) => l.levelNumber === levelNum);
   if (levelIndex === -1) {
     return res.status(404).json({
       success: false,

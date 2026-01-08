@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import xlsx from 'xlsx';
-import { DatabaseService } from '../services/DatabaseService';
-import { FeeService } from '../services/FeeService';
-import { asyncHandler } from '../middleware/errorHandler';
-import { authenticate, authorize } from '../middleware/auth';
-import { ApiResponse, PaginatedResponse, IStudent } from '../types';
+import { DatabaseService } from '../services/DatabaseService.js';
+import { FeeService } from '../services/FeeService.js';
+import { asyncHandler } from '../middleware/errorHandler.js';
+import { authenticate, authorize } from '../middleware/auth.js';
+import { ApiResponse, PaginatedResponse, IStudent } from '../types/index.js';
 
 const router = Router();
 
@@ -65,7 +65,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response<ApiResponse<Pagi
 
   // Add overdue status to each student
   const studentsWithOverdue = await Promise.all(
-    result.data.map(async (student) => {
+    result.data.map(async (student: any) => {
       const hasOverdue = await FeeService.hasOverdueFees((student._id as any).toString());
       return {
         ...student.toObject(),

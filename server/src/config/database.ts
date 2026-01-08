@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { config } from './index';
+import { config } from './index.js';
 
 class Database {
   private static instance: Database;

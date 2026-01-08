@@ -1,6 +1,6 @@
-import FeeRecord from '../models/FeeRecord';
-import Course from '../models/Course';
-import Student from '../models/Student';
+import FeeRecord from '../models/FeeRecord.js';
+import Course from '../models/Course.js';
+import Student from '../models/Student.js';
 import mongoose from 'mongoose';
 
 export class FeeService {
@@ -43,7 +43,7 @@ export class FeeService {
       
       // Get fee amount from the first level (or use student's level if available)
       const studentLevel = student.level || student.skillLevel || 1;
-      const levelConfig = course.levels.find(l => l.levelNumber === studentLevel) || course.levels[0];
+      const levelConfig = course.levels.find((l: any) => l.levelNumber === studentLevel) || course.levels[0];
       
       if (!levelConfig) {
         throw new Error(`No level configuration found for course: ${stage}`);
@@ -327,7 +327,7 @@ export class FeeService {
       
       // Get fee amount from the first level (or use student's level if available)
       const studentLevel = student.level || student.skillLevel || 1;
-      const levelConfig = course.levels.find(l => l.levelNumber === studentLevel) || course.levels[0];
+      const levelConfig = course.levels.find((l: any) => l.levelNumber === studentLevel) || course.levels[0];
       
       if (!levelConfig) {
         console.warn(`No level configuration found for course: ${stage}`);
@@ -462,7 +462,7 @@ export class FeeService {
       
       // Get fee amount from the first level (or use student's level if available)
       const studentLevel = student.level || student.skillLevel || 1;
-      const levelConfig = course.levels.find(l => l.levelNumber === studentLevel) || course.levels[0];
+      const levelConfig = course.levels.find((l: any) => l.levelNumber === studentLevel) || course.levels[0];
       
       if (!levelConfig) {
         throw new Error(`No level configuration found for course: ${stage}`);

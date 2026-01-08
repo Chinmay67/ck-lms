@@ -312,8 +312,8 @@ export class EmailSyncService {
 
       if (lastSync && lastSync.status === 'completed' && lastSync.lastProcessedEmailDate) {
         afterDate = lastSync.lastProcessedEmailDate;
-        console.log(`📅 Last sync: ${afterDate.toISOString()}`);
-        console.log(`� Fetching emails after: ${afterDate.toLocaleString()}`);
+        console.log(`📅 Last sync: ${afterDate!.toISOString()}`);
+        console.log(`� Fetching emails after: ${afterDate!.toLocaleString()}`);
       } else {
         console.log(`📧 No previous sync found. Fetching all emails...`);
       }

@@ -1,9 +1,9 @@
-import Student from '../models/Student';
-import User from '../models/User';
-import SyncJob from '../models/SyncJob';
-import { IStudent, ISyncJob, EmailParseResult, PaginationOptions, PaginatedResponse } from '../types';
-import { parseSkillString } from '../utils/skillParser';
-import { FeeService } from './FeeService';
+import Student from '../models/Student.js';
+import User from '../models/User.js';
+import SyncJob from '../models/SyncJob.js';
+import { IStudent, ISyncJob, EmailParseResult, PaginationOptions, PaginatedResponse } from '../types/index.js';
+import { parseSkillString } from '../utils/skillParser.js';
+import { FeeService } from './FeeService.js';
 import mongoose from 'mongoose';
 
 export class DatabaseService {

@@ -1,13 +1,13 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import xlsx from 'xlsx';
-import FeeRecord from '../models/FeeRecord';
-import Course from '../models/Course';
-import Student from '../models/Student';
-import { FeeService } from '../services/FeeService';
-import { asyncHandler } from '../middleware/errorHandler';
-import { authenticate, authorize } from '../middleware/auth';
-import { ApiResponse, IFeeRecord, FeeStats, PaginatedResponse } from '../types';
+import FeeRecord from '../models/FeeRecord.js';
+import Course from '../models/Course.js';
+import Student from '../models/Student.js';
+import { FeeService } from '../services/FeeService.js';
+import { asyncHandler } from '../middleware/errorHandler.js';
+import { authenticate, authorize } from '../middleware/auth.js';
+import { ApiResponse, IFeeRecord, FeeStats, PaginatedResponse } from '../types/index.js';
 
 const router = Router();
 
@@ -462,7 +462,7 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
   
   // Get fee amount from the first level (or use student's level if available)
   const studentLevel = student.level || student.skillLevel || 1;
-  const levelConfig = course.levels.find(l => l.levelNumber === studentLevel) || course.levels[0];
+  const levelConfig = course.levels.find((l: any) => l.levelNumber === studentLevel) || course.levels[0];
   
   if (!levelConfig) {
     return res.status(400).json({
@@ -1037,7 +1037,7 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
         }
 
         const studentLevel = student.level || student.skillLevel || 1;
-        const levelConfig = course.levels.find(l => l.levelNumber === studentLevel) || course.levels[0];
+        const levelConfig = course.levels.find((l: any) => l.levelNumber === studentLevel) || course.levels[0];
         
         if (!levelConfig) {
           results.skipped++;
