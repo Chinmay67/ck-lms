@@ -175,7 +175,6 @@ const StudentsList: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Error saving student:', err);
-      const errorMsg = getErrorMessage(err);
       showErrorToast(err, modalMode === 'create' ? 'Failed to create student' : 'Failed to update student');
     }
   };

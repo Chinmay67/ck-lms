@@ -35,7 +35,7 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       console.log(`Making ${config.method?.toUpperCase()} request to: ${config.url}`);
     }
     return config;

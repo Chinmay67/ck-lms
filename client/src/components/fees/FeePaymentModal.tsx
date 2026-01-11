@@ -5,7 +5,7 @@ import type { Student, FeeRecord } from '../../types/student';
 import type { Course } from '../../types/course';
 import { FeesAPI, CourseAPI, CreditAPI } from '../../services/api';
 import toast from 'react-hot-toast';
-import { getErrorMessage, showErrorToast } from '../../utils/errorHandler';
+import { showErrorToast } from '../../utils/errorHandler';
 
 interface FeePaymentModalProps {
   isOpen: boolean;
