@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import type { Student, FeeRecord } from '../../types/student';
+import type { Student, FeeRecord, StudentCredit, CreditSummary } from '../../types/student';
 import type { Course } from '../../types/course';
-import { FeesAPI, CourseAPI } from '../../services/api';
+import { FeesAPI, CourseAPI, CreditAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import FeePaymentModal from './FeePaymentModal';
+import AddCreditModal from './AddCreditModal';
 
 interface StudentFeesTabProps {
   student: Student;
@@ -15,12 +16,15 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showCreditModal, setShowCreditModal] = useState(false);
   const [editingFee, setEditingFee] = useState<FeeRecord | null>(null);
 
   const [payableFees, setPayableFees] = useState<{
     overdue: FeeRecord[];
     nextUpcoming: FeeRecord | null;
   }>({ overdue: [], nextUpcoming: null });
+  const [credits, setCredits] = useState<StudentCredit[]>([]);
+  const [creditSummary, setCreditSummary] = useState<CreditSummary | null>(null);
 
   useEffect(() => {
     // Use id field instead of _id (student objects use 'id' not '_id')
@@ -33,6 +37,7 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
     fetchStudentFees(studentId);
     fetchPayableFees(studentId);
     fetchFeeConfig();
+    fetchCredits(studentId);
   }, [student]);
 
   const fetchStudentFees = async (studentId: string) => {
@@ -106,13 +111,33 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
     }
   };
 
+  const fetchCredits = async (studentId: string) => {
+    try {
+      const response = await CreditAPI.getStudentCredits(studentId);
+      if (response.success && response.data) {
+        setCredits(response.data);
+      }
+
+      const summaryResponse = await CreditAPI.getCreditSummary(studentId);
+      if (summaryResponse.success && summaryResponse.data) {
+        setCreditSummary(summaryResponse.data);
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch credits:', error);
+      // Don't show error for credits - it's optional
+    }
+  };
+
   const handlePaymentSuccess = () => {
     const studentId = (student as any)?.id || student._id;
     if (studentId) {
       fetchStudentFees(studentId);
       fetchPayableFees(studentId);
+      fetchCredits(studentId);
     }
     setEditingFee(null);
+    setShowPaymentModal(false);
+    setShowCreditModal(false);
   };
 
   const handleEditFee = (fee: FeeRecord) => {
@@ -236,10 +261,18 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
       {/* Action Buttons */}
       <div className="flex justify-end">
         <button
-          onClick={() => setShowPaymentModal(true)}
+          onClick={() => {
+            // Check if student has batch assigned
+            const hasBatch = student.batchId && student.batchId !== '';
+            if (hasBatch) {
+              setShowPaymentModal(true);
+            } else {
+              setShowCreditModal(true);
+            }
+          }}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
-          Record Payment
+          {student.batchId ? 'Record Payment' : 'Add Credit'}
         </button>
       </div>
 
@@ -284,6 +317,65 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
               </span>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Active Credits */}
+      {creditSummary && creditSummary.totalRemaining > 0 && (
+        <div className="bg-white rounded-lg shadow-md p-6 border-2 border-green-200">
+          <h3 className="text-lg font-semibold text-green-700 mb-4 flex items-center gap-2">
+            <span className="text-2xl">💰</span>
+            Active Credits
+          </h3>
+          <div className="bg-green-50 p-4 rounded-lg mb-4">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm text-gray-600">Total Balance:</span>
+              <span className="text-2xl font-bold text-green-700">
+                {formatCurrency(creditSummary.totalRemaining)}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-xs text-gray-600">
+              <div>
+                <span>Total Received:</span>
+                <span className="ml-2 font-medium">{formatCurrency(creditSummary.totalPaid)}</span>
+              </div>
+              <div>
+                <span>Total Used:</span>
+                <span className="ml-2 font-medium">{formatCurrency(creditSummary.totalUsed)}</span>
+              </div>
+            </div>
+          </div>
+          {credits.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Credit History</h4>
+              {credits.map((credit) => (
+                <div key={credit._id} className="flex justify-between items-center bg-white px-4 py-3 rounded-lg border border-green-200">
+                  <div className="flex-1">
+                    <div className="flex justify-between items-center">
+                      <p className="text-sm font-medium text-gray-900">
+                        {formatDate(credit.createdAt)} - Payment Received
+                      </p>
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        credit.status === 'active' ? 'bg-green-100 text-green-800' : 
+                        credit.status === 'used' ? 'bg-gray-100 text-gray-600' : 
+                        'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {credit.status === 'used' ? 'Used' : credit.status === 'expired' ? 'Expired' : 'Active'}
+                      </span>
+                    </div>
+                    <div className="flex gap-4 mt-1 text-xs text-gray-600">
+                      <span>Received: {formatCurrency(credit.amountPaid)}</span>
+                      <span>Used: {formatCurrency(credit.amountUsed)}</span>
+                      <span className="font-medium text-green-700">Balance: {formatCurrency(credit.remainingCredit)}</span>
+                    </div>
+                    {credit.notes && (
+                      <p className="text-xs text-gray-500 mt-1">{credit.notes}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -375,6 +467,14 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
         student={student}
         onSuccess={handlePaymentSuccess}
         editingFee={editingFee}
+      />
+
+      {/* Credit Modal for students without batch */}
+      <AddCreditModal
+        isOpen={showCreditModal}
+        onClose={() => setShowCreditModal(false)}
+        student={student}
+        onSuccess={handlePaymentSuccess}
       />
     </div>
   );

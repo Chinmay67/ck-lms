@@ -58,6 +58,7 @@ const StudentSchema = new Schema<IStudent>({
     trim: true,
     maxlength: [100, 'Combined skill cannot exceed 100 characters']
   },
+  // DEPRECATED: Use stage and level instead (kept for backward compatibility during migration)
   skillCategory: {
     type: String,
     enum: {
@@ -67,6 +68,7 @@ const StudentSchema = new Schema<IStudent>({
     lowercase: true,
     trim: true
   },
+  // DEPRECATED: Use stage and level instead (kept for backward compatibility during migration)
   skillLevel: {
     type: Number,
     enum: {
@@ -76,8 +78,10 @@ const StudentSchema = new Schema<IStudent>({
     min: [1, 'Skill level cannot be less than 1'],
     max: [3, 'Skill level cannot be greater than 3']
   },
+  // STANDARDIZED FIELDS: Use these instead of skillCategory/skillLevel
   stage: {
     type: String,
+    required: [true, 'Stage is required'],
     enum: {
       values: ['beginner', 'intermediate', 'advanced'],
       message: 'Stage must be one of: beginner, intermediate, advanced'
@@ -87,6 +91,7 @@ const StudentSchema = new Schema<IStudent>({
   },
   level: {
     type: Number,
+    required: [true, 'Level is required'],
     enum: {
       values: [1, 2, 3],
       message: 'Level must be 1, 2, or 3'
@@ -99,6 +104,11 @@ const StudentSchema = new Schema<IStudent>({
     default: 'Not Assigned',
     trim: true,
     maxlength: [100, 'Batch cannot exceed 100 characters']
+  },
+  batchId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Batch',
+    default: null
   },
   referredBy: {
     type: String,
@@ -113,6 +123,10 @@ const StudentSchema = new Schema<IStudent>({
     type: Date,
     default: Date.now,
     required: [true, 'Enrollment date is required']
+  },
+  feeCycleStartDate: {
+    type: Date,
+    default: null
   },
   isActive: {
     type: Boolean,
@@ -135,11 +149,55 @@ StudentSchema.virtual('displayName').get(function() {
   return this.studentName || 'Unknown Student';
 });
 
+// Cascade delete: Remove related records when student is deleted
+StudentSchema.pre('deleteOne', { document: true, query: false }, async function() {
+  const studentId = this._id;
+  await mongoose.model('FeeRecord').deleteMany({ studentId });
+  await mongoose.model('StudentCredit').deleteMany({ studentId });
+});
+
+// Handle query-based deleteOne (e.g., Student.deleteOne({ _id: ... }))
+StudentSchema.pre('deleteOne', { document: false, query: true }, async function() {
+  const student = await this.model.findOne(this.getFilter()).select('_id');
+  if (student) {
+    await mongoose.model('FeeRecord').deleteMany({ studentId: student._id });
+    await mongoose.model('StudentCredit').deleteMany({ studentId: student._id });
+  }
+});
+
+// Handle deleteMany
+StudentSchema.pre('deleteMany', async function() {
+  const students = await this.model.find(this.getFilter()).select('_id');
+  const studentIds = students.map(s => s._id);
+  if (studentIds.length > 0) {
+    await mongoose.model('FeeRecord').deleteMany({ studentId: { $in: studentIds } });
+    await mongoose.model('StudentCredit').deleteMany({ studentId: { $in: studentIds } });
+  }
+});
+
+// Sync studentName to related records when updated
+StudentSchema.post('findOneAndUpdate', async function(doc) {
+  if (doc) {
+    const update = this.getUpdate() as any;
+    const newName = update?.$set?.studentName || update?.studentName;
+    if (newName) {
+      await mongoose.model('FeeRecord').updateMany(
+        { studentId: doc._id },
+        { $set: { studentName: newName } }
+      );
+      await mongoose.model('StudentCredit').updateMany(
+        { studentId: doc._id },
+        { $set: { studentName: newName } }
+      );
+    }
+  }
+});
+
 // Ensure virtual fields are serialized
 StudentSchema.set('toJSON', {
   virtuals: true,
   transform: function(doc, ret: any) {
-    delete ret._id;
+    ret.id = ret._id?.toString();
     delete ret.__v;
     return ret;
   }

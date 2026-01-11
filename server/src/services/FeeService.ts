@@ -1,13 +1,23 @@
 import FeeRecord from '../models/FeeRecord.js';
 import Course from '../models/Course.js';
 import Student from '../models/Student.js';
+import Batch from '../models/Batch.js';
 import mongoose from 'mongoose';
 
 export class FeeService {
   /**
+   * Get the effective fee cycle start date for a student
+   * @param student - The student document
+   * @returns The fee cycle start date (feeCycleStartDate if available, otherwise enrollmentDate)
+   */
+  static getFeeCycleStartDate(student: any): Date {
+    return student.feeCycleStartDate || student.enrollmentDate;
+  }
+
+  /**
    * Generate upcoming fee records for a student
    * @param studentId - The ID of the student
-   * @param startMonth - The start month for fee generation (defaults to student's enrollment date)
+   * @param startMonth - The start month for fee generation (defaults to student's fee cycle start date)
    * @param monthsToGenerate - Number of months to generate (defaults to 3)
    * @param session - Mongoose session for transaction support
    * @returns Array of created fee records
@@ -51,10 +61,11 @@ export class FeeService {
       
       const feeAmount = levelConfig.feeAmount;
 
-      // Determine start month (use provided date or student's enrollment date)
-      const startDate = startMonth || student.enrollmentDate;
+      // Determine start month (use provided date or student's fee cycle start date)
+      const feeCycleStartDate = this.getFeeCycleStartDate(student);
+      const startDate = startMonth || feeCycleStartDate;
       if (!startDate) {
-        throw new Error('No start month provided and student has no enrollment date');
+        throw new Error('No start month provided and student has no fee cycle start date');
       }
 
       // Set start date to the 1st of the month
@@ -71,7 +82,7 @@ export class FeeService {
           feeDate.setMonth(feeDate.getMonth() + i);
 
           const feeMonth = this.generateFeeMonthName(feeDate);
-          const dueDate = this.calculateDueDate(feeDate);
+          const dueDate = this.calculateDueDate(feeDate, feeCycleStartDate);
 
           // Check if fee record already exists for this month
           const existingFee = await FeeRecord.findOne({
@@ -84,7 +95,7 @@ export class FeeService {
             continue;
           }
 
-          // Create fee record
+          // Create fee record (status is computed dynamically)
           const fee = new FeeRecord({
             studentId,
             studentName: student.studentName,
@@ -92,7 +103,6 @@ export class FeeService {
             level: student.level || student.skillLevel,
             feeMonth,
             dueDate,
-            status: 'upcoming',
             feeAmount: feeAmount,
             paidAmount: 0
           });
@@ -145,14 +155,22 @@ export class FeeService {
 
   /**
    * Calculate the due date for a fee month
-   * Due date is the 10th of the month by default
+   * Always uses the enrollment date day for consistency
    * @param monthDate - The month date
-   * @param dueDay - The day of month for due date (default: 10)
+   * @param enrollmentDate - The student's enrollment date
    * @returns Due date
    */
-  static calculateDueDate(monthDate: Date, dueDay: number = 10): Date {
+  static calculateDueDate(
+    monthDate: Date,
+    enrollmentDate: Date
+  ): Date {
     const dueDate = new Date(monthDate);
-    dueDate.setDate(dueDay);
+    
+    // Always use enrollment day for all fees
+    const enrollDay = enrollmentDate.getDate();
+    const lastDayOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+    dueDate.setDate(Math.min(enrollDay, lastDayOfMonth));
+    
     dueDate.setHours(23, 59, 59, 999);
     return dueDate;
   }
@@ -236,9 +254,13 @@ export class FeeService {
    */
   static async hasUpcomingFees(studentId: string): Promise<boolean> {
     try {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      
       const count = await FeeRecord.countDocuments({ 
         studentId, 
-        status: 'upcoming' 
+        paymentDate: null,
+        dueDate: { $gte: now }
       });
       return count > 0;
     } catch (error: any) {
@@ -253,9 +275,13 @@ export class FeeService {
    */
   static async getNextUpcomingFee(studentId: string): Promise<any | null> {
     try {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      
       return await FeeRecord.findOne({ 
         studentId, 
-        status: 'upcoming' 
+        paymentDate: null,
+        dueDate: { $gte: now }
       }).sort({ dueDate: 1 });
     } catch (error: any) {
       throw new Error(`Failed to get next upcoming fee: ${error.message}`);
@@ -265,21 +291,17 @@ export class FeeService {
   /**
    * Check if a student has any overdue fees
    * @param studentId - The student ID
-   * @returns True if student has overdue fees (status is 'overdue' OR upcoming fees past due date)
+   * @returns True if student has overdue fees
    */
   static async hasOverdueFees(studentId: string): Promise<boolean> {
     try {
       const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      
       const count = await FeeRecord.countDocuments({ 
         studentId,
-        $or: [
-          { status: 'overdue' },
-          { status: 'partially_paid' },
-          { 
-            status: 'upcoming',
-            dueDate: { $lt: now }
-          }
-        ]
+        paymentDate: null,
+        dueDate: { $lt: now }
       });
       return count > 0;
     } catch (error: any) {
@@ -290,6 +312,7 @@ export class FeeService {
   /**
    * Generate the next month's fee record for a student (incremental approach)
    * Creates only ONE fee record - either the first month or the next upcoming month
+   * Only creates if student has no overdue fees and no existing upcoming fees
    * @param studentId - The student ID
    * @param baseDate - Optional base date (used for first fee generation)
    * @param session - Mongoose session for transaction support
@@ -336,6 +359,20 @@ export class FeeService {
       
       const feeAmount = levelConfig.feeAmount;
 
+      // Check if student has any overdue fees
+      const hasOverdue = await this.hasOverdueFees(studentId);
+      if (hasOverdue) {
+        console.log(`Student ${studentId} has overdue fees, skipping upcoming fee generation`);
+        return null;
+      }
+
+      // Check if student already has upcoming fees
+      const hasUpcoming = await this.hasUpcomingFees(studentId);
+      if (hasUpcoming) {
+        console.log(`Student ${studentId} already has upcoming fees, skipping generation`);
+        return null;
+      }
+
       // Find the latest fee record for this student
       const latestFee = await FeeRecord.findOne({ studentId })
         .sort({ dueDate: -1 })
@@ -343,12 +380,13 @@ export class FeeService {
         .session(session || null);
 
       let nextMonthDate: Date;
+      const feeCycleStartDate = this.getFeeCycleStartDate(student);
 
       if (!latestFee) {
-        // No fees exist - create first month from enrollment or provided base date
-        const startDate = baseDate || student.enrollmentDate;
+        // No fees exist - create first month from fee cycle start date or provided base date
+        const startDate = baseDate || feeCycleStartDate;
         if (!startDate) {
-          throw new Error('No base date provided and student has no enrollment date');
+          throw new Error('No base date provided and student has no fee cycle start date');
         }
         nextMonthDate = new Date(startDate);
       } else {
@@ -362,7 +400,10 @@ export class FeeService {
       nextMonthDate.setHours(0, 0, 0, 0);
 
       const feeMonth = this.generateFeeMonthName(nextMonthDate);
-      const dueDate = this.calculateDueDate(nextMonthDate);
+      const dueDate = this.calculateDueDate(
+        nextMonthDate,
+        feeCycleStartDate
+      );
 
       // Check if fee record already exists for this month
       const existingFee = await FeeRecord.findOne({
@@ -375,16 +416,15 @@ export class FeeService {
         return existingFee;
       }
 
-      // Create fee record
+      // Create fee record (status is computed dynamically)
       const fee = new FeeRecord({
         studentId,
         studentName: student.studentName,
         stage,
         level: student.level || student.skillLevel,
-            feeMonth,
-            dueDate,
-            status: 'upcoming',
-            feeAmount: feeAmount,
+        feeMonth,
+        dueDate,
+        feeAmount: feeAmount,
         paidAmount: 0
       });
 
@@ -398,33 +438,6 @@ export class FeeService {
     }
   }
 
-  /**
-   * Update overdue status for all upcoming fees past their due date
-   * Should be called by a scheduled job
-   * @returns Number of fees updated
-   */
-  static async updateOverdueFees(): Promise<number> {
-    try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const result = await FeeRecord.updateMany(
-        {
-          status: 'upcoming',
-          dueDate: { $lt: today }
-        },
-        {
-          status: 'overdue'
-        }
-      );
-
-      console.log(`Updated ${result.modifiedCount} fees to overdue status`);
-      return result.modifiedCount;
-    } catch (error: any) {
-      console.error(`Failed to update overdue fees: ${error.message}`);
-      throw new Error(`Failed to update overdue fees: ${error.message}`);
-    }
-  }
 
   /**
    * Create initial fee records for a newly created student
@@ -432,7 +445,7 @@ export class FeeService {
    * - For current month: Creates upcoming fee
    * - Also creates one next month's upcoming fee
    * @param studentId - The student ID
-   * @param enrollmentDate - The student's enrollment date
+   * @param enrollmentDate - The student's enrollment date (or fee cycle start date)
    * @param stage - The student's stage (beginner, intermediate, advanced)
    * @param session - Mongoose session for transaction support
    * @returns Array of created fee records
@@ -449,6 +462,10 @@ export class FeeService {
       if (!student) {
         throw new Error('Student not found');
       }
+
+      // Use fee cycle start date if available, otherwise use enrollmentDate parameter
+      const feeCycleStartDate = this.getFeeCycleStartDate(student);
+      const startDate = feeCycleStartDate || enrollmentDate;
 
       // Get course configuration for the stage
       const course = await Course.findOne({ 
@@ -475,19 +492,26 @@ export class FeeService {
       currentDate.setDate(1);
       currentDate.setHours(0, 0, 0, 0);
 
-      // Start from enrollment month
-      const monthDate = new Date(enrollmentDate);
+      // Start from fee cycle start date
+      const monthDate = new Date(startDate);
       monthDate.setDate(1);
       monthDate.setHours(0, 0, 0, 0);
 
       // Generate fee records from enrollment month onwards
-      // Create past months and current month as overdue, and one next month as upcoming
+      // Create past months and current month only (do not create future months)
       let monthsProcessed = 0;
       const maxMonths = 100; // Safety limit
 
       while (monthsProcessed < maxMonths) {
+        // Check if we've gone past current month BEFORE creating fee
+        if (monthDate.getFullYear() > currentDate.getFullYear() ||
+            (monthDate.getFullYear() === currentDate.getFullYear() && 
+             monthDate.getMonth() > currentDate.getMonth())) {
+          break;  // Stop before creating next month
+        }
+
         const feeMonth = this.generateFeeMonthName(monthDate);
-        const dueDate = this.calculateDueDate(monthDate);
+        const dueDate = this.calculateDueDate(monthDate, startDate);
 
         // Check if fee record already exists for this month
         const existingFee = await FeeRecord.findOne({
@@ -496,18 +520,7 @@ export class FeeService {
         }).session(session || null);
 
         if (!existingFee) {
-          // Determine status based on month
-          let status: 'overdue' | 'upcoming';
-          
-          if (monthDate <= currentDate) {
-            // Past months and current month are overdue
-            status = 'overdue';
-          } else {
-            // Future months are upcoming
-            status = 'upcoming';
-          }
-
-          // Create fee record
+          // Create fee record (status is computed dynamically based on dueDate and paymentDate)
           const fee = new FeeRecord({
             studentId,
             studentName: student.studentName,
@@ -515,18 +528,12 @@ export class FeeService {
             level: student.level || student.skillLevel,
             feeMonth,
             dueDate,
-            status,
             feeAmount: feeAmount,
             paidAmount: 0
           });
 
           await fee.save({ session: session || null });
           createdFees.push(fee);
-        }
-
-        // Stop after creating one upcoming month (next month after current)
-        if (monthDate > currentDate) {
-          break;
         }
 
         // Move to next month
@@ -539,6 +546,102 @@ export class FeeService {
     } catch (error: any) {
       console.error(`Failed to create initial fees: ${error.message}`);
       throw new Error(`Failed to create initial fees: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle stage/level transition for a student
+   * - Deletes all unpaid upcoming fees (status: upcoming, amountPaid: 0)
+   * - Determines effective date based on batch start date vs current date
+   * - Generates new fees from effective date with new stage/level fee amount
+   * - Updates student's feeCycleStartDate
+   * @param studentId - The student ID
+   * @param newBatchId - The new batch ID
+   * @param newStage - The new stage
+   * @param newLevel - The new level
+   * @param session - Mongoose session for transaction support
+   * @returns Object with deleted and created fee counts
+   */
+  static async handleStageLevelTransition(
+    studentId: string,
+    newBatchId: string,
+    newStage: string,
+    newLevel: number,
+    session?: mongoose.ClientSession
+  ): Promise<{
+    deletedFeesCount: number;
+    createdFeesCount: number;
+    effectiveDate: Date;
+  }> {
+    try {
+      // Get the student
+      const student = await Student.findById(studentId).session(session || null);
+      if (!student) {
+        throw new Error('Student not found');
+      }
+
+      // Get the new batch
+      const batch = await Batch.findById(newBatchId).session(session || null);
+      if (!batch) {
+        throw new Error('Batch not found');
+      }
+
+      // Validate batch matches new stage/level
+      if (batch.stage !== newStage || batch.level !== newLevel) {
+        throw new Error(`Batch does not match the new stage (${newStage}) and level (${newLevel})`);
+      }
+
+      const currentDate = new Date();
+      currentDate.setHours(0, 0, 0, 0);
+
+      // Delete all unpaid upcoming fees
+      // Upcoming fees have dueDate >= today and paidAmount = 0
+      const deleteResult = await FeeRecord.deleteMany({
+        studentId,
+        paidAmount: 0,
+        dueDate: { $gte: currentDate }
+      }).session(session || null);
+
+      const deletedFeesCount = deleteResult.deletedCount || 0;
+      console.log(`Deleted ${deletedFeesCount} unpaid upcoming fees for student ${studentId}`);
+
+      // Determine effective date: max(batch start date, current date)
+      const batchStartDate = new Date(batch.startDate);
+      batchStartDate.setHours(0, 0, 0, 0);
+      
+      const effectiveDate = batchStartDate > currentDate ? batchStartDate : currentDate;
+      
+      // Set to first of the month for fee generation
+      const feeStartDate = new Date(effectiveDate);
+      feeStartDate.setDate(1);
+      feeStartDate.setHours(0, 0, 0, 0);
+
+      // Update student's feeCycleStartDate to the effective date
+      student.feeCycleStartDate = effectiveDate;
+      student.stage = newStage;
+      student.level = newLevel;
+      student.batchId = batch._id as any;
+      student.batch = batch.batchName;
+      await student.save({ session: session || null });
+
+      // Generate new fees from effective date using the new stage
+      const createdFees = await this.createInitialOverdueFeesForStudent(
+        studentId,
+        feeStartDate,
+        newStage,
+        session
+      );
+
+      console.log(`Created ${createdFees.length} new fees for student ${studentId} after stage/level transition`);
+
+      return {
+        deletedFeesCount,
+        createdFeesCount: createdFees.length,
+        effectiveDate
+      };
+    } catch (error: any) {
+      console.error(`Failed to handle stage/level transition: ${error.message}`);
+      throw new Error(`Failed to handle stage/level transition: ${error.message}`);
     }
   }
 
@@ -556,19 +659,18 @@ export class FeeService {
       const currentDate = new Date();
       currentDate.setHours(0, 0, 0, 0);
 
-      // Get all overdue and partially paid fees
+      // Get all overdue fees (no payment date and past due date)
       const overdueFees = await FeeRecord.find({
         studentId,
-        $or: [
-          { status: 'overdue' },
-          { status: 'partially_paid' }
-        ]
+        paymentDate: null,
+        dueDate: { $lt: currentDate }
       }).sort({ dueDate: 1 });
 
-      // Get the earliest upcoming fee only
+      // Get the earliest upcoming fee only (no payment date and future due date)
       const nextUpcomingFee = await FeeRecord.findOne({
         studentId,
-        status: 'upcoming'
+        paymentDate: null,
+        dueDate: { $gte: currentDate }
       }).sort({ dueDate: 1 });
 
       return {

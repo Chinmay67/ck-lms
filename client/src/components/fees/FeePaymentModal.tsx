@@ -3,8 +3,9 @@ import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import type { Student, FeeRecord } from '../../types/student';
 import type { Course } from '../../types/course';
-import { FeesAPI, CourseAPI } from '../../services/api';
+import { FeesAPI, CourseAPI, CreditAPI } from '../../services/api';
 import toast from 'react-hot-toast';
+import { getErrorMessage, showErrorToast } from '../../utils/errorHandler';
 
 interface FeePaymentModalProps {
   isOpen: boolean;
@@ -67,15 +68,20 @@ const FeePaymentModal = ({ isOpen, onClose, student, onSuccess, editingFee }: Fe
     if (!student) return;
     try {
       const stage = student.stage || student.skillCategory;
-      if (!stage) return;
+      if (!stage) {
+        toast.error('Unable to determine student stage. Please update student details.');
+        return;
+      }
       
       const response = await CourseAPI.getCourseByName(stage);
       if (response.success && response.data) {
         setCourse(response.data);
+      } else {
+        toast.error(`No course configuration found for ${stage}. Please contact administrator.`);
       }
     } catch (error: any) {
       console.error('Failed to fetch course configuration:', error);
-      toast.error(error.message || 'Failed to fetch course configuration');
+      showErrorToast(error, 'Unable to load fee configuration');
     }
   };
 
@@ -95,7 +101,7 @@ const FeePaymentModal = ({ isOpen, onClose, student, onSuccess, editingFee }: Fe
       }
     } catch (error: any) {
       console.error('Failed to fetch payable fees:', error);
-      toast.error('Failed to load payable fees');
+      showErrorToast(error, 'Unable to load fee information');
     }
   };
 
@@ -132,11 +138,8 @@ const FeePaymentModal = ({ isOpen, onClose, student, onSuccess, editingFee }: Fe
       return;
     }
 
-    // Validate months array
-    if (!isEditMode && (!months || months.length === 0)) {
-      toast.error('Please select months to pay for');
-      return;
-    }
+    // Check if student has no batch (not assigned to any batch)
+    const hasNoBatch = !student.batchId && !student.batch;
 
     setLoading(true);
     try {
@@ -154,8 +157,33 @@ const FeePaymentModal = ({ isOpen, onClose, student, onSuccess, editingFee }: Fe
           onSuccess();
           handleClose();
         }
+      } else if (hasNoBatch) {
+        // Student has no batch - create credit instead
+        const creditAmount = isPartialPayment && partialAmount 
+          ? parseFloat(partialAmount) 
+          : (course.levels.length > 0 ? course.levels[0].feeAmount * numMonths : 0);
+
+        const response = await CreditAPI.createCredit({
+          studentId,
+          amount: creditAmount,
+          description: `Payment received before batch assignment. ${numMonths} month(s) worth of fees.`,
+          paymentMethod,
+          remarks: remarks || undefined
+        });
+
+        if (response.success) {
+          toast.success(`Credit of ₹${creditAmount.toLocaleString()} created for ${student.studentName}. Will be applied when assigned to a batch.`);
+          onSuccess();
+          handleClose();
+        }
       } else {
-        // Create new fee record(s)
+        // Validate months array for normal payment
+        if (!months || months.length === 0) {
+          toast.error('Please select at least one month to record payment for');
+          return;
+        }
+
+        // Create new fee record(s) - student has batch
         const response = await FeesAPI.recordBulkPayment({
           studentId,
           months,
@@ -167,14 +195,15 @@ const FeePaymentModal = ({ isOpen, onClose, student, onSuccess, editingFee }: Fe
         });
 
         if (response.success) {
-          toast.success(`Payment recorded for ${months.length} month(s)`);
+          const monthNames = months.map(m => m.feeMonth).join(', ');
+          toast.success(`Payment recorded successfully for ${monthNames}`);
           onSuccess();
           handleClose();
         }
       }
     } catch (error: any) {
       console.error('Failed to record payment:', error);
-      toast.error(error.response?.data?.error || error.message || 'Failed to record payment');
+      showErrorToast(error, 'Unable to record payment. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -325,12 +354,13 @@ const FeePaymentModal = ({ isOpen, onClose, student, onSuccess, editingFee }: Fe
               <label className="flex items-center">
                 <input
                   type="checkbox"
-                  checked={isPartialPayment}
+                  checked={isPartialPayment && numMonths === 1}
                   onChange={(e) => setIsPartialPayment(e.target.checked)}
-                  className="rounded border-border text-primary-600 focus:ring-primary-500"
+                  className="rounded border-border text-primary-600 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={numMonths > 1}
                 />
-                <span className="ml-2 text-sm font-medium text-text-primary">
-                  Partial Payment
+                <span className={`ml-2 text-sm font-medium ${numMonths > 1 ? 'text-text-tertiary' : 'text-text-primary'}`}>
+                  Partial Payment {numMonths > 1 && '(only for single month)'}
                 </span>
               </label>
               {isPartialPayment && (

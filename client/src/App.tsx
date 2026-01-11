@@ -5,11 +5,12 @@ import Layout from './components/layout/Layout';
 import StudentsList from './components/StudentsList.new';
 import FeesOverviewDashboard from './components/fees/FeesOverviewDashboard';
 import CourseConfigurationPanel from './components/courses/CourseConfigurationPanel';
+import BatchManagementPanel from './components/batches/BatchManagementPanel';
 import { Login } from './components/Login';
 import LoadingSpinner from './components/ui/LoadingSpinner';
 import './App.css';
 
-type TabType = 'students' | 'fees' | 'courses';
+type TabType = 'students' | 'fees' | 'courses' | 'batches';
 
 function AppContent() {
   const { isAuthenticated, loading, login, user } = useAuth();
@@ -58,16 +59,28 @@ function AppContent() {
             Fees Overview
           </button>
           {isSuperAdmin && (
-            <button
-              onClick={() => setActiveTab('courses')}
-              className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-all duration-200 ${
-                activeTab === 'courses'
-                  ? 'bg-gradient-primary text-white shadow-glow'
-                  : 'text-text-secondary hover:bg-primary-50 hover:text-primary-600'
-              }`}
-            >
-              Course Configuration
-            </button>
+            <>
+              <button
+                onClick={() => setActiveTab('courses')}
+                className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-all duration-200 ${
+                  activeTab === 'courses'
+                    ? 'bg-gradient-primary text-white shadow-glow'
+                    : 'text-text-secondary hover:bg-primary-50 hover:text-primary-600'
+                }`}
+              >
+                Courses
+              </button>
+              <button
+                onClick={() => setActiveTab('batches')}
+                className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-all duration-200 ${
+                  activeTab === 'batches'
+                    ? 'bg-gradient-primary text-white shadow-glow'
+                    : 'text-text-secondary hover:bg-primary-50 hover:text-primary-600'
+                }`}
+              >
+                Batches
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -77,6 +90,7 @@ function AppContent() {
         {activeTab === 'students' && <StudentsList />}
         {activeTab === 'fees' && <FeesOverviewDashboard />}
         {activeTab === 'courses' && isSuperAdmin && <CourseConfigurationPanel />}
+        {activeTab === 'batches' && isSuperAdmin && <BatchManagementPanel />}
       </div>
     </Layout>
   );

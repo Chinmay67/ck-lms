@@ -141,7 +141,8 @@ const BulkUploadModal = ({ isOpen, onClose, onSuccess }: BulkUploadModalProps) =
             <li><strong>Email validation:</strong> Must be valid email format (rows with "nan" or empty emails will be skipped)</li>
             <li><strong>Status field:</strong> "discontinued" = Inactive, "irregular" or any other = Active</li>
             <li><strong>Level field:</strong> B1, B2, I1, I2, A1, A2 (Beginner/Intermediate/Advanced 1-3)</li>
-            <li><strong>Optional fields:</strong> Parent Name, Date of Birth, Address, Batch, Referred By</li>
+            <li><strong>Batch Code:</strong> Use the batch code (e.g., BEG_1_1234) to auto-assign students to batches</li>
+            <li><strong>Optional fields:</strong> Parent Name, Date of Birth, Address, Batch Code, Referred By</li>
             <li>Rows with missing/invalid phone or email will be automatically skipped</li>
             <li>User accounts will be automatically created (email = username, phone = password)</li>
           </ul>

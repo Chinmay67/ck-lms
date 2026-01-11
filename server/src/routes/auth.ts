@@ -3,6 +3,7 @@ import User from '../models/User.js';
 import { generateToken, authenticate } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { ApiResponse } from '../types/index.js';
+import { ValidationError, DuplicateError, UnauthorizedError, assert, validate } from '../utils/errors.js';
 
 const router = Router();
 
@@ -10,23 +11,29 @@ const router = Router();
 router.post('/register', asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { email, password, name, role } = req.body;
 
-  // Validation
-  if (!email || !password || !name) {
-    return res.status(400).json({
-      success: false,
-      error: 'Email, password, and name are required',
-      timestamp: new Date().toISOString()
-    });
+  // Validation with descriptive error messages
+  assert.required({ email, password, name }, {
+    email: 'Email address',
+    password: 'Password',
+    name: 'Full name'
+  });
+
+  assert.validEmail(email, 'Email address');
+
+  // Password strength validation
+  if (password.length < 6) {
+    throw new ValidationError('Password must be at least 6 characters long');
   }
 
   // Check if user already exists
   const existingUser = await User.findOne({ email: email.toLowerCase() });
   if (existingUser) {
-    return res.status(400).json({
-      success: false,
-      error: 'User with this email already exists',
-      timestamp: new Date().toISOString()
-    });
+    throw new DuplicateError(`An account with email "${email}" already exists. Please use a different email or try logging in.`);
+  }
+
+  // Validate role if provided
+  if (role && !['user', 'admin', 'superadmin'].includes(role)) {
+    throw new ValidationError('Invalid role. Must be one of: user, admin, superadmin');
   }
 
   // Create user (default role is 'user' unless specified)
@@ -51,7 +58,7 @@ router.post('/register', asyncHandler(async (req: Request, res: Response<ApiResp
       },
       token
     },
-    message: 'User registered successfully',
+    message: 'Account created successfully. Welcome!',
     timestamp: new Date().toISOString()
   });
 }));
@@ -60,44 +67,38 @@ router.post('/register', asyncHandler(async (req: Request, res: Response<ApiResp
 router.post('/login', asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { email, password } = req.body;
 
-  // Validation
-  if (!email || !password) {
-    return res.status(400).json({
-      success: false,
-      error: 'Email and password are required',
-      timestamp: new Date().toISOString()
-    });
+  // Validation with descriptive error messages
+  if (!email && !password) {
+    throw new ValidationError('Please enter your email and password to login');
+  }
+  if (!email) {
+    throw new ValidationError('Please enter your email address');
+  }
+  if (!password) {
+    throw new ValidationError('Please enter your password');
+  }
+
+  if (!validate.isValidEmail(email)) {
+    throw new ValidationError('Please enter a valid email address');
   }
 
   // Find user (include password field for comparison)
   const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
   
   if (!user) {
-    return res.status(401).json({
-      success: false,
-      error: 'Invalid email or password',
-      timestamp: new Date().toISOString()
-    });
+    throw new UnauthorizedError('No account found with this email. Please check your email or create a new account.');
   }
 
   // Check if user is active
   if (!user.isActive) {
-    return res.status(401).json({
-      success: false,
-      error: 'Account is inactive. Please contact administrator.',
-      timestamp: new Date().toISOString()
-    });
+    throw new UnauthorizedError('Your account has been deactivated. Please contact the administrator for assistance.');
   }
 
   // Verify password
   const isPasswordValid = await user.comparePassword(password);
   
   if (!isPasswordValid) {
-    return res.status(401).json({
-      success: false,
-      error: 'Invalid email or password',
-      timestamp: new Date().toISOString()
-    });
+    throw new UnauthorizedError('Incorrect password. Please try again or reset your password.');
   }
 
   // Generate token
@@ -114,7 +115,7 @@ router.post('/login', asyncHandler(async (req: Request, res: Response<ApiRespons
       },
       token
     },
-    message: 'Login successful',
+    message: 'Login successful. Welcome back!',
     timestamp: new Date().toISOString()
   });
 }));
@@ -122,11 +123,7 @@ router.post('/login', asyncHandler(async (req: Request, res: Response<ApiRespons
 // GET /api/auth/me - Get current user
 router.get('/me', authenticate, asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   if (!req.user) {
-    return res.status(401).json({
-      success: false,
-      error: 'User not authenticated',
-      timestamp: new Date().toISOString()
-    });
+    throw new UnauthorizedError('Your session has expired. Please log in again.');
   }
 
   return res.json({

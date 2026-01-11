@@ -14,6 +14,7 @@ export interface Student {
   stage?: 'beginner' | 'intermediate' | 'advanced';
   level?: 1 | 2 | 3;
   batch?: string;
+  batchId?: string | null;
   referredBy?: string;
   emailId?: string;
   enrollmentDate: string;
@@ -110,4 +111,36 @@ export interface FeeFilters {
   studentId?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+}
+
+export interface StudentCredit {
+  _id: string;
+  studentId: string;
+  studentName: string;
+  amountPaid: number;
+  amountUsed: number;
+  remainingCredit: number;
+  status: 'active' | 'used' | 'expired';
+  paymentDate: string;
+  paymentMethod?: string;
+  processedBy: string;
+  usageHistory: Array<{
+    amount: number;
+    feeRecordId: string;
+    usedAt: string;
+    monthCovered: string;
+  }>;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreditSummary {
+  totalCredits: number;
+  activeCredits: number;
+  usedCredits: number;
+  expiredCredits: number;
+  totalPaid: number;
+  totalUsed: number;
+  totalRemaining: number;
 }

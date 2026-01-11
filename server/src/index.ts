@@ -10,6 +10,8 @@ import authRoutes from './routes/auth.js';
 import feeRoutes from './routes/fees.js';
 import courseRoutes from './routes/courses.js';
 import cronRoutes from './routes/cron.js';
+import batchRoutes from './routes/batches.js';
+import creditRoutes from './routes/credits.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 
 const app = express();
@@ -48,6 +50,8 @@ app.use('/api/sync', syncRoutes);
 app.use('/api/fees', feeRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/cron', cronRoutes);
+app.use('/api/batches', batchRoutes);
+app.use('/api/credits', creditRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {

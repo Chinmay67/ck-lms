@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { FaUpload } from 'react-icons/fa';
+import { FaUpload, FaExclamationTriangle, FaRedo } from 'react-icons/fa';
 import { StudentsAPI, FeesAPI } from '../services/api';
 import type { Student, StudentFilters } from '../types/student';
 import StudentModal from './students/StudentModal';
 import BulkUploadModal from './students/BulkUploadModal';
 import FeePaymentModal from './fees/FeePaymentModal';
+import AddCreditModal from './fees/AddCreditModal';
 import toast from 'react-hot-toast';
+import { getErrorMessage, isNetworkError, showErrorToast } from '../utils/errorHandler';
 
 const StudentsList: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorType, setErrorType] = useState<'network' | 'server' | 'general'>('general');
   const [overdueStudents, setOverdueStudents] = useState<Record<string, boolean>>({});
   const [pagination, setPagination] = useState({
     currentPage: 1,
@@ -33,6 +36,7 @@ const StudentsList: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBulkUploadModalOpen, setIsBulkUploadModalOpen] = useState(false);
   const [isFeeModalOpen, setIsFeeModalOpen] = useState(false);
+  const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [newlyCreatedStudent, setNewlyCreatedStudent] = useState<Student | null>(null);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
@@ -47,10 +51,17 @@ const StudentsList: React.FC = () => {
         setStudents(response.data.data);
         setPagination(response.data.pagination);
       } else {
-        setError(response.error || 'Failed to fetch students');
+        setError(response.error || 'Unable to load students. Please try again.');
+        setErrorType('server');
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Failed to fetch students');
+      if (isNetworkError(err)) {
+        setError('Unable to connect to the server. Please check your internet connection.');
+        setErrorType('network');
+      } else {
+        setError(getErrorMessage(err));
+        setErrorType('server');
+      }
     } finally {
       setLoading(false);
     }
@@ -63,7 +74,8 @@ const StudentsList: React.FC = () => {
         setOverdueStudents(response.data);
       }
     } catch (err: any) {
-      console.error('Error fetching overdue status:', err);
+      // Silently fail - this is supplementary data
+      console.error('Error fetching overdue status:', getErrorMessage(err));
     }
   };
 
@@ -132,20 +144,30 @@ const StudentsList: React.FC = () => {
     try {
       if (modalMode === 'create') {
         const response = await StudentsAPI.createStudent(studentData);
-        toast.success('Student created successfully');
+        toast.success(`Student "${studentData.studentName}" created successfully!`);
         
         // Refresh the list
         await fetchStudents();
         setIsModalOpen(false);
         
-        // Open fee modal for the newly created student
+        // Open appropriate modal based on batch assignment
         if (response.success && response.data) {
-          setNewlyCreatedStudent(response.data);
-          setIsFeeModalOpen(true);
+          // The response may contain { student, initialFees } or just the student
+          const createdStudent = (response.data as any).student || response.data;
+          setNewlyCreatedStudent(createdStudent);
+          
+          // Check if student has a batch assigned
+          if (studentData.batchId) {
+            // Has batch - open fee payment modal
+            setIsFeeModalOpen(true);
+          } else {
+            // No batch - open credit modal
+            setIsCreditModalOpen(true);
+          }
         }
       } else if (selectedStudent) {
         await StudentsAPI.updateStudent(selectedStudent._id, studentData);
-        toast.success('Student updated successfully');
+        toast.success(`Student "${studentData.studentName || selectedStudent.studentName}" updated successfully!`);
         
         // Refresh the list
         await fetchStudents();
@@ -153,9 +175,8 @@ const StudentsList: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Error saving student:', err);
-      const errorMsg = err.response?.data?.error || err.message || 'Failed to save student';
-      setError(errorMsg);
-      toast.error(errorMsg);
+      const errorMsg = getErrorMessage(err);
+      showErrorToast(err, modalMode === 'create' ? 'Failed to create student' : 'Failed to update student');
     }
   };
 
@@ -164,17 +185,59 @@ const StudentsList: React.FC = () => {
     setNewlyCreatedStudent(null);
   };
 
+  const handleCreditModalClose = () => {
+    setIsCreditModalOpen(false);
+    setNewlyCreatedStudent(null);
+  };
+
+  const handleCreditPaymentSuccess = () => {
+    toast.success('Credit payment recorded successfully');
+    fetchStudents(); // Refresh to show updated status
+  };
+
   const handleFeePaymentSuccess = () => {
     toast.success('Fee payment recorded successfully');
     fetchStudents(); // Refresh to show updated fee status
     fetchOverdueStatus(); // Refresh overdue status
   };
 
-  if (loading) {
+  const handleRetry = () => {
+    setError(null);
+    fetchStudents();
+    fetchOverdueStatus();
+  };
+
+  if (loading && !error) {
     return (
       <div className="min-h-screen bg-white">
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-900 border-t-transparent"></div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state with retry option
+  if (error && students.length === 0) {
+    return (
+      <div className="min-h-screen bg-white">
+        <div className="flex flex-col items-center justify-center h-64 p-6">
+          <div className={`mb-4 p-4 rounded-full ${errorType === 'network' ? 'bg-orange-100' : 'bg-red-100'}`}>
+            <FaExclamationTriangle className={`h-8 w-8 ${errorType === 'network' ? 'text-orange-500' : 'text-red-500'}`} />
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            {errorType === 'network' ? 'Connection Error' : 'Unable to Load Students'}
+          </h2>
+          <p className="text-gray-600 text-center max-w-md mb-4">
+            {error}
+          </p>
+          <button
+            onClick={handleRetry}
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gray-900 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900"
+          >
+            <FaRedo className="mr-2 h-4 w-4" />
+            Try Again
+          </button>
         </div>
       </div>
     );
@@ -474,12 +537,20 @@ const StudentsList: React.FC = () => {
         onSuccess={fetchStudents}
       />
 
-      {/* Fee Payment Modal for newly created students */}
+      {/* Fee Payment Modal for newly created students with batch */}
       <FeePaymentModal
         isOpen={isFeeModalOpen}
         onClose={handleFeeModalClose}
         student={newlyCreatedStudent}
         onSuccess={handleFeePaymentSuccess}
+      />
+
+      {/* Credit Modal for newly created students without batch */}
+      <AddCreditModal
+        isOpen={isCreditModalOpen}
+        onClose={handleCreditModalClose}
+        student={newlyCreatedStudent}
+        onSuccess={handleCreditPaymentSuccess}
       />
     </div>
   );

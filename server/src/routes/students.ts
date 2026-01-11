@@ -3,9 +3,18 @@ import multer from 'multer';
 import xlsx from 'xlsx';
 import { DatabaseService } from '../services/DatabaseService.js';
 import { FeeService } from '../services/FeeService.js';
+import Batch from '../models/Batch.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ApiResponse, PaginatedResponse, IStudent } from '../types/index.js';
+import { 
+  cleanPhoneNumber, 
+  parseExcelDate, 
+  generateCombinedSkill,
+  isValidEmail,
+  parseLevelField,
+  parseStatus
+} from '../utils/fieldValidation.js';
 
 const router = Router();
 
@@ -139,7 +148,7 @@ router.get('/download-template', asyncHandler(async (req: Request, res: Response
         'Status': 'Active',
         'Student Start Date': '2025-01-15',
         'Level': 'B1',
-        'Batch': 'SS:2:30',
+        'Batch Code': 'BEG_1_1234567890',
         'Parent Name': 'Jane Doe',
         'Date of Birth': '2010-05-20',
         'Address': '123 Main St, City, State',
@@ -152,7 +161,7 @@ router.get('/download-template', asyncHandler(async (req: Request, res: Response
         'Status': 'Irregular',
         'Student Start Date': '2025-01-20',
         'Level': 'I1',
-        'Batch': 'TT:4:30',
+        'Batch Code': 'INT_1_1234567890',
         'Parent Name': 'Bob Smith',
         'Date of Birth': '2011-03-15',
         'Address': '456 Oak Ave, City, State',
@@ -172,7 +181,7 @@ router.get('/download-template', asyncHandler(async (req: Request, res: Response
       { wch: 15 }, // Status
       { wch: 20 }, // Student Start Date
       { wch: 12 }, // Level
-      { wch: 15 }, // Batch
+      { wch: 20 }, // Batch Code
       { wch: 25 }, // Parent Name
       { wch: 18 }, // Date of Birth
       { wch: 35 }, // Address
@@ -198,78 +207,6 @@ router.get('/download-template', asyncHandler(async (req: Request, res: Response
     });
   }
 }));
-
-// Helper functions for validation
-const cleanPhoneNumber = (phone: string | number): string | null => {
-  if (!phone) return null;
-  
-  // Convert to string and remove all non-digit characters
-  const cleaned = String(phone).replace(/\D/g, '');
-  
-  // Check if it's a valid 10-digit Indian mobile number
-  if (cleaned.length === 10 && /^[6-9]/.test(cleaned)) {
-    return cleaned;
-  }
-  
-  return null;
-};
-
-const isValidEmail = (email: any): boolean => {
-  if (!email || email === 'nan' || String(email).toLowerCase() === 'nan') {
-    return false;
-  }
-  
-  const emailStr = String(email).trim();
-  if (!emailStr) return false;
-  
-  const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
-  return emailRegex.test(emailStr);
-};
-
-const parseLevelField = (level: string): { skillCategory?: string; skillLevel?: number } => {
-  if (!level || level === 'nan') return {};
-  
-  const levelStr = String(level).trim().toUpperCase();
-  
-  // Map level codes to category and level
-  const levelMap: { [key: string]: { category: string; level: number } } = {
-    'B1': { category: 'beginner', level: 1 },
-    'B2': { category: 'beginner', level: 2 },
-    'B3': { category: 'beginner', level: 3 },
-    'I1': { category: 'intermediate', level: 1 },
-    'I2': { category: 'intermediate', level: 2 },
-    'I3': { category: 'intermediate', level: 3 },
-    'A1': { category: 'advanced', level: 1 },
-    'A2': { category: 'advanced', level: 2 },
-    'A3': { category: 'advanced', level: 3 },
-  };
-  
-  // Remove spaces and parse
-  const code = levelStr.replace(/\s+/g, '');
-  
-  if (levelMap[code]) {
-    return {
-      skillCategory: levelMap[code].category,
-      skillLevel: levelMap[code].level
-    };
-  }
-  
-  return {};
-};
-
-const parseStatus = (status: any): boolean => {
-  if (!status || status === 'nan') return true; // Default to active
-  
-  const statusStr = String(status).toLowerCase().trim();
-  
-  // Only mark as inactive if explicitly "discontinued"
-  if (statusStr === 'discontinued' || statusStr === 'discontinue') {
-    return false;
-  }
-  
-  // All other statuses (including "irregular") are active
-  return true;
-};
 
 // POST /api/students/bulk-upload - Bulk upload students from Excel (must come before /:id)
 router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
@@ -334,7 +271,7 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
         // Use Student Start Date first, fall back to Batch Start Date if missing
         const studentStartDate = row['Student Start Date'] || row['Batch Start Date'];
         const level = row['Level'];
-        const batch = row['Batch'];
+        const batchCode = row['Batch Code'] || row['BatchCode'] || row['batch_code'];
         const parentName = row['Parent Name'];
         const dob = row['Date of Birth'] || row['dob'];
         const address = row['Address'];
@@ -379,13 +316,24 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
         // Parse status to determine isActive
         const isActive = parseStatus(status);
         
+        // Look up batch by batchCode if provided
+        let matchedBatch: any = null;
+        if (batchCode && batchCode !== 'nan' && String(batchCode).trim() !== '') {
+          const cleanBatchCode = String(batchCode).trim().toUpperCase();
+          matchedBatch = await Batch.findOne({ batchCode: cleanBatchCode });
+          if (!matchedBatch) {
+            console.warn(`Row ${rowNum}: Batch code '${cleanBatchCode}' not found, student will be created without batch`);
+          }
+        }
+
         // Build student data
         const studentData: Partial<IStudent> = {
           studentName: String(name).trim(),
           email: String(email).trim().toLowerCase(),
           phone: cleanedPhone,
           isActive: isActive,
-          batch: batch && batch !== 'nan' ? String(batch).trim() : 'Not Assigned'
+          batch: matchedBatch ? matchedBatch.batchName : 'Not Assigned',
+          batchId: matchedBatch ? matchedBatch._id : undefined
         };
         
         // Add optional fields if present
@@ -406,20 +354,21 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
         }
         
         // Add level information if parsed
-        if (levelInfo.skillCategory) {
-          studentData.skillCategory = levelInfo.skillCategory as any;
-          studentData.stage = levelInfo.skillCategory as any;
+        if (levelInfo.stage) {
+          // Set both new and deprecated fields for compatibility during migration
+          studentData.stage = levelInfo.stage;
+          studentData.skillCategory = levelInfo.stage as any;
         }
         
-        if (levelInfo.skillLevel) {
-          studentData.skillLevel = levelInfo.skillLevel as 1 | 2 | 3;
-          studentData.level = levelInfo.skillLevel as 1 | 2 | 3;
+        if (levelInfo.level) {
+          // Set both new and deprecated fields for compatibility during migration
+          studentData.level = levelInfo.level;
+          studentData.skillLevel = levelInfo.level;
         }
         
-        // Auto-generate combinedSkill from stage + level
-        if (levelInfo.skillCategory && levelInfo.skillLevel) {
-          const stageCapitalized = levelInfo.skillCategory.charAt(0).toUpperCase() + levelInfo.skillCategory.slice(1);
-          studentData.combinedSkill = `${stageCapitalized} Level - ${levelInfo.skillLevel}`;
+        // Auto-generate combinedSkill using the utility function
+        if (levelInfo.stage && levelInfo.level) {
+          studentData.combinedSkill = generateCombinedSkill(levelInfo.stage, levelInfo.level);
         }
         
         // Parse enrollment date - handle Excel date formats
@@ -467,29 +416,39 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
         const student = await DatabaseService.createStudent(studentData);
         results.successful++;
         
-        // Generate fee records (same as single student creation)
-        try {
-          const stage = student.stage || student.skillCategory;
-          if (stage && studentData.enrollmentDate) {
-            await FeeService.createInitialOverdueFeesForStudent(
-              (student._id as any).toString(),
-              studentData.enrollmentDate,
-              stage
-            );
-            results.feesGenerated++;
-          } else {
-            // Log if we couldn't generate fees
-            if (!stage) {
-              console.warn(`No stage/skillCategory for student ${student._id}, skipping fee generation`);
+        // Only generate fee records if student has a batch assigned
+        // For bulk upload without batch, no fees are created (payments become credits)
+        if (student.batchId) {
+          try {
+            const batch = await Batch.findById(student.batchId);
+            
+            if (batch) {
+              // Set fee cycle start date to batch start date
+              student.feeCycleStartDate = batch.startDate;
+              await student.save();
+              
+              const stage = student.stage || student.skillCategory;
+              if (stage) {
+                await FeeService.createInitialOverdueFeesForStudent(
+                  (student._id as any).toString(),
+                  batch.startDate,
+                  stage
+                );
+                results.feesGenerated++;
+              } else {
+                console.warn(`No stage/skillCategory for student ${student._id}, skipping fee generation`);
+                results.feesSkipped++;
+              }
+            } else {
+              results.feesSkipped++;
             }
-            if (!studentData.enrollmentDate) {
-              console.warn(`No enrollment date for student ${student._id}, skipping fee generation`);
-            }
+          } catch (feeError: any) {
+            // Don't fail student creation if fee generation fails
+            console.warn(`Failed to generate fees for student ${student._id}: ${feeError.message}`);
             results.feesSkipped++;
           }
-        } catch (feeError: any) {
-          // Don't fail student creation if fee generation fails
-          console.warn(`Failed to generate fees for student ${student._id}: ${feeError.message}`);
+        } else {
+          // No batch assigned - skip fee generation, payments will become credits
           results.feesSkipped++;
         }
 
@@ -570,27 +529,47 @@ router.post('/', asyncHandler(async (req: Request, res: Response<ApiResponse>) =
 
   const student = await DatabaseService.createStudent(studentData);
   
-  // Automatically create initial overdue fee records from enrollment to current month
+  // Only generate fee records if student has a batch assigned
   let initialFees: any[] = [];
-  try {
-    const stage = student.stage || student.skillCategory;
-    if (stage && student.enrollmentDate) {
-      initialFees = await FeeService.createInitialOverdueFeesForStudent(
-        (student._id as any).toString(),
-        student.enrollmentDate,
-        stage
-      );
+  let feeCycleStartDate: Date | null = null;
+  
+  if (studentData.batchId) {
+    try {
+      // Import Batch model to get batch start date
+      const Batch = (await import('../models/Batch.js')).default;
+      const batch = await Batch.findById(studentData.batchId);
+      
+      if (batch) {
+        // Set fee cycle start date to batch start date
+        feeCycleStartDate = batch.startDate;
+        student.feeCycleStartDate = feeCycleStartDate;
+        student.batchId = batch._id as any;
+        student.batch = batch.batchName;
+        await student.save();
+        
+        const stage = student.stage || student.skillCategory;
+        if (stage && feeCycleStartDate) {
+          initialFees = await FeeService.createInitialOverdueFeesForStudent(
+            (student._id as any).toString(),
+            feeCycleStartDate,
+            stage
+          );
+        }
+      }
+    } catch (error: any) {
+      console.warn(`Failed to generate initial fees for student ${student._id}: ${error.message}`);
+      // Don't fail the student creation if fee generation fails
     }
-  } catch (error: any) {
-    console.warn(`Failed to generate initial fees for student ${student._id}: ${error.message}`);
-    // Don't fail the student creation if fee generation fails
   }
+  // If no batch assigned, no fee records are created. Payments will become credits.
   
   return res.status(201).json({
     success: true,
     data: {
       student,
-      initialFees // Return fees so frontend knows what was created
+      initialFees, // Return fees so frontend knows what was created (empty if no batch)
+      hasBatch: !!studentData.batchId,
+      message: !studentData.batchId ? 'Student created without batch. Any payments will be stored as credits until batch is assigned.' : undefined
     },
     message: 'Student created successfully',
     timestamp: new Date().toISOString()
@@ -615,6 +594,83 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
   delete updateData._id;
   delete updateData.createdAt;
   delete updateData.updatedAt;
+  
+  // Get the existing student to check for stage/level changes
+  const existingStudent = await DatabaseService.getStudentById(id);
+  if (!existingStudent) {
+    return res.status(404).json({
+      success: false,
+      error: 'Student not found',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  // Check if stage or level has changed
+  const stageChanged = updateData.stage && updateData.stage !== existingStudent.stage;
+  const levelChanged = updateData.level && updateData.level !== existingStudent.level;
+  const stageLevelChanged = stageChanged || levelChanged;
+  
+  // If stage/level changed, validate that a compatible batch is provided
+  if (stageLevelChanged) {
+    if (!updateData.batchId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Stage/level change requires selecting a compatible batch. Please select a batch that matches the new stage and level.',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // Import Batch model to validate batch compatibility
+    const Batch = (await import('../models/Batch.js')).default;
+    const batch = await Batch.findById(updateData.batchId);
+    
+    if (!batch) {
+      return res.status(400).json({
+        success: false,
+        error: 'Selected batch not found',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    const newStage = updateData.stage || existingStudent.stage;
+    const newLevel = updateData.level || existingStudent.level;
+    
+    if (batch.stage !== newStage || batch.level !== newLevel) {
+      return res.status(400).json({
+        success: false,
+        error: `Selected batch (${batch.stage} Level ${batch.level}) does not match the new stage/level (${newStage} Level ${newLevel}). Please select a compatible batch.`,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // Handle fee transition - delete old unpaid upcoming fees, generate new ones
+    try {
+      const transitionResult = await FeeService.handleStageLevelTransition(
+        id,
+        updateData.batchId,
+        newStage,
+        newLevel
+      );
+      
+      console.log(`Stage/level transition for student ${id}: deleted ${transitionResult.deletedFeesCount} fees, created ${transitionResult.createdFeesCount} fees`);
+      
+      // The handleStageLevelTransition already updates the student, so we can return the updated student
+      const updatedStudent = await DatabaseService.getStudentById(id);
+      
+      return res.json({
+        success: true,
+        data: updatedStudent!,
+        message: `Student updated successfully. ${transitionResult.deletedFeesCount} upcoming fees deleted, ${transitionResult.createdFeesCount} new fees generated.`,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        error: `Failed to process stage/level change: ${error.message}`,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
   
   // Auto-generate combinedSkill from stage + level
   if (updateData.stage && updateData.level) {

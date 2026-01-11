@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import { type Student } from '../../types/student';
+import { type Batch } from '../../types/batch';
+import { BatchAPI } from '../../services/api';
 
 interface StudentModalProps {
   isOpen: boolean;
@@ -24,13 +26,73 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
     address: '',
     stage: 'beginner',
     level: 1,
+    batchId: null,
     batch: 'Not Assigned',
     referredBy: '',
     enrollmentDate: new Date().toISOString().split('T')[0],
   });
 
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [loadingBatches, setLoadingBatches] = useState(false);
+  
+  // Track original stage/level for edit mode to detect changes
+  const [originalStage, setOriginalStage] = useState<string | null>(null);
+  const [originalLevel, setOriginalLevel] = useState<number | null>(null);
+  
+  // Confirmation dialog state
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [pendingFormData, setPendingFormData] = useState<Partial<Student> | null>(null);
+  
+  // Debounce timeout ref
+  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Fetch batches filtered by stage/level with debouncing
+  const fetchBatchesForStageLevel = async (stage: string, level: number) => {
+    try {
+      setLoadingBatches(true);
+      const response = await BatchAPI.getAvailableBatches(
+        stage as 'beginner' | 'intermediate' | 'advanced',
+        level
+      );
+      if (response.success && response.data) {
+        setBatches(response.data);
+      } else {
+        setBatches([]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch batches:', err);
+      setBatches([]);
+    } finally {
+      setLoadingBatches(false);
+    }
+  };
+
+  // Debounced effect to fetch batches when stage/level changes
   useEffect(() => {
-        if (student && mode === 'edit') {
+    if (!isOpen) return;
+    
+    // Clear previous timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+    
+    // Debounce the fetch call by 300ms
+    debounceTimeoutRef.current = setTimeout(() => {
+      if (formData.stage && formData.level) {
+        fetchBatchesForStageLevel(formData.stage, formData.level as number);
+      }
+    }, 300);
+    
+    // Cleanup on unmount
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, [isOpen, formData.stage, formData.level]);
+
+  useEffect(() => {
+    if (student && mode === 'edit') {
       setFormData({
         studentName: student.studentName,
         email: student.email,
@@ -42,10 +104,14 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
         address: student.address || '',
         stage: student.stage || 'beginner',
         level: student.level || 1,
+        batchId: student.batchId || null,
         batch: student.batch || 'Not Assigned',
         referredBy: student.referredBy || '',
         enrollmentDate: student.enrollmentDate ? new Date(student.enrollmentDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       });
+      // Store original values for change detection
+      setOriginalStage(student.stage || 'beginner');
+      setOriginalLevel(student.level || 1);
     } else {
       setFormData({
         studentName: '',
@@ -58,22 +124,70 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
         address: '',
         stage: 'beginner',
         level: 1,
+        batchId: null,
         batch: 'Not Assigned',
         referredBy: '',
         enrollmentDate: new Date().toISOString().split('T')[0],
       });
+      // Reset original values for create mode
+      setOriginalStage(null);
+      setOriginalLevel(null);
     }
+    // Reset confirmation dialog state
+    setShowConfirmDialog(false);
+    setPendingFormData(null);
   }, [student, mode, isOpen]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    
+    // If stage or level changes, clear the batch selection
+    if (name === 'stage' || name === 'level') {
+      setFormData((prev) => ({ 
+        ...prev, 
+        [name]: name === 'level' ? parseInt(value) : value,
+        batchId: null,
+        batch: 'Not Assigned'
+      }));
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    }
+  };
+
+  // Check if stage or level has changed from original (edit mode only)
+  const hasStageLevelChanged = (): boolean => {
+    if (mode !== 'edit' || originalStage === null || originalLevel === null) {
+      return false;
+    }
+    return formData.stage !== originalStage || formData.level !== originalLevel;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // If stage/level changed in edit mode, show confirmation dialog
+    if (hasStageLevelChanged()) {
+      setPendingFormData(formData);
+      setShowConfirmDialog(true);
+      return;
+    }
+    
     onSubmit(formData);
     onClose();
+  };
+
+  const handleConfirmStageLevelChange = () => {
+    if (pendingFormData) {
+      onSubmit(pendingFormData);
+      onClose();
+    }
+    setShowConfirmDialog(false);
+    setPendingFormData(null);
+  };
+
+  const handleCancelStageLevelChange = () => {
+    setShowConfirmDialog(false);
+    setPendingFormData(null);
   };
 
   return (
@@ -219,13 +333,47 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
               </select>
             </div>
 
-            <Input
-              label="Batch"
-              name="batch"
-              value={formData.batch}
-              onChange={handleChange}
-              placeholder="e.g., 2024-A, Jan 2025, Morning Batch"
-            />
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-1">
+                Batch
+              </label>
+              <select
+                name="batchId"
+                value={formData.batchId || ''}
+                onChange={handleChange}
+                className="w-full px-3 md:px-4 py-2 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-surface text-text-primary transition-all"
+              >
+                <option value="">Not Assigned</option>
+                {loadingBatches ? (
+                  <option disabled>Loading batches...</option>
+                ) : batches.length === 0 ? (
+                  <option disabled>No compatible batches for {formData.stage} Level {formData.level}</option>
+                ) : (
+                  batches.map((batch) => (
+                    <option key={batch.id} value={batch.id}>
+                      {batch.batchName} ({batch.batchCode})
+                      {batch.maxStudents && ` (${batch.currentStudentCount || 0}/${batch.maxStudents})`}
+                    </option>
+                  ))
+                )}
+              </select>
+              {/* Info message about credits when no batch is selected */}
+              {!formData.batchId && (
+                <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-xs text-amber-700">
+                    <span className="font-medium">💡 No batch selected:</span> Fee records won't be generated until a batch is assigned. Any payments received will be stored as <span className="font-semibold">credits</span> and automatically applied when the student joins a batch.
+                  </p>
+                </div>
+              )}
+              {/* Warning when stage/level changed but no batch selected - only show if student had a batch before */}
+              {hasStageLevelChanged() && !formData.batchId && !!student?.batchId && (
+                <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-xs text-red-700">
+                    <span className="font-medium">⚠️ Batch required:</span> When changing stage or level, you must select a compatible batch. Upcoming unpaid fees will be deleted and new fees will be generated.
+                  </p>
+                </div>
+              )}
+            </div>
 
             <Input
               label="Referred By"
@@ -242,11 +390,69 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
           <Button type="button" variant="ghost" onClick={onClose} className="w-full sm:w-auto">
             Cancel
           </Button>
-          <Button type="submit" variant="primary" className="w-full sm:w-auto">
+          <Button 
+            type="submit" 
+            variant="primary" 
+            className="w-full sm:w-auto"
+            disabled={hasStageLevelChanged() && !formData.batchId && !!student?.batchId}
+          >
             {mode === 'create' ? 'Add Student' : 'Save Changes'}
           </Button>
         </div>
       </form>
+
+      {/* Confirmation Dialog for Stage/Level Change */}
+      {showConfirmDialog && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Confirm Stage/Level Change</h3>
+            </div>
+            
+            <div className="mb-6 space-y-3">
+              <p className="text-sm text-gray-600">
+                You are changing the student from <span className="font-semibold">{originalStage} Level {originalLevel}</span> to <span className="font-semibold">{formData.stage} Level {formData.level}</span>.
+              </p>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-sm text-amber-800">
+                  <strong>This will:</strong>
+                </p>
+                <ul className="text-sm text-amber-700 mt-2 space-y-1 list-disc list-inside">
+                  <li>Delete all upcoming unpaid fee records</li>
+                  <li>Generate new fee records based on the new batch's start date and fee structure</li>
+                  <li>Keep all paid, partially paid, and overdue fees unchanged</li>
+                  <li>Keep all existing credits available</li>
+                </ul>
+              </div>
+              <p className="text-sm text-gray-600">
+                Are you sure you want to continue?
+              </p>
+            </div>
+            
+            <div className="flex gap-3 justify-end">
+              <Button 
+                type="button" 
+                variant="ghost" 
+                onClick={handleCancelStageLevelChange}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="button" 
+                variant="primary" 
+                onClick={handleConfirmStageLevelChange}
+              >
+                Confirm Change
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 };

@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import type { FormEvent, ChangeEvent } from 'react';
-import { FaGraduationCap, FaLock, FaEnvelope } from 'react-icons/fa';
+import { FaGraduationCap, FaLock, FaEnvelope, FaExclamationCircle } from 'react-icons/fa';
 import { AuthAPI } from '../services/api';
 import type { LoginCredentials } from '../services/api';
 import Button from './ui/Button';
 import Input from './ui/Input';
 import Card from './ui/Card';
+import { getErrorMessage, isNetworkError } from '../utils/errorHandler';
 
 interface LoginProps {
   onLoginSuccess: () => void;
@@ -17,30 +18,94 @@ export function Login({ onLoginSuccess }: LoginProps) {
     password: '',
   });
   const [error, setError] = useState<string>('');
+  const [errorType, setErrorType] = useState<'validation' | 'auth' | 'network' | 'general'>('general');
   const [loading, setLoading] = useState(false);
+
+  // Client-side validation
+  const validateForm = (): string | null => {
+    if (!credentials.email.trim()) {
+      return 'Please enter your email address';
+    }
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(credentials.email.trim())) {
+      return 'Please enter a valid email address';
+    }
+    
+    if (!credentials.password) {
+      return 'Please enter your password';
+    }
+    
+    if (credentials.password.length < 6) {
+      return 'Password must be at least 6 characters';
+    }
+    
+    return null;
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    setErrorType('general');
+
+    // Client-side validation first
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
+      setErrorType('validation');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const response = await AuthAPI.login(credentials);
+      const response = await AuthAPI.login({
+        email: credentials.email.trim().toLowerCase(),
+        password: credentials.password,
+      });
       
       if (response.success && response.data) {
         console.log('Login successful:', response.data.user);
         onLoginSuccess();
       } else {
         setError(response.error || 'Login failed. Please try again.');
+        setErrorType('auth');
       }
     } catch (err: any) {
       console.error('Login error:', err);
-      setError(
-        err.response?.data?.error || 
-        'Failed to login. Please check your credentials and try again.'
-      );
+      
+      if (isNetworkError(err)) {
+        setError('Unable to connect to the server. Please check your internet connection and try again.');
+        setErrorType('network');
+      } else {
+        const errorMessage = getErrorMessage(err);
+        setError(errorMessage);
+        setErrorType('auth');
+      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getErrorIcon = () => {
+    switch (errorType) {
+      case 'network':
+        return '🌐';
+      case 'validation':
+        return '⚠️';
+      default:
+        return <FaExclamationCircle className="inline mr-2" />;
+    }
+  };
+
+  const getErrorBgColor = () => {
+    switch (errorType) {
+      case 'network':
+        return 'bg-orange-50 border-orange-200 text-orange-700';
+      case 'validation':
+        return 'bg-yellow-50 border-yellow-200 text-yellow-700';
+      default:
+        return 'bg-red-50 border-red-200 text-red-700';
     }
   };
 
@@ -64,8 +129,9 @@ export function Login({ onLoginSuccess }: LoginProps) {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm animate-slide-down">
-                {error}
+              <div className={`${getErrorBgColor()} border px-4 py-3 rounded-xl text-sm animate-slide-down flex items-start`}>
+                <span className="mr-2 flex-shrink-0">{getErrorIcon()}</span>
+                <span>{error}</span>
               </div>
             )}
 

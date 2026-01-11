@@ -1,8 +1,10 @@
 import axios from 'axios';
 import type { Student, ApiResponse, PaginatedResponse, StudentFilters } from '../types/student';
 import type { Course, CourseFormData, LevelFormData } from '../types/course';
+import type { Batch, CreateBatchData, UpdateBatchData, BatchStats, ScheduleEntry, ScheduleValidationResult, BatchFilters, EligibleStudent, BulkAssignResult } from '../types/batch';
 import { getMockPaginatedStudents } from '../mocks/students';
 import { env } from '../config/env';
+import { parseError, getErrorMessage } from '../utils/errorHandler';
 
 // Toggle between mock and real API
 const USE_MOCK_DATA = false; // Set to false to use real backend
@@ -33,27 +35,48 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    console.log(`Making ${config.method?.toUpperCase()} request to: ${config.url}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Making ${config.method?.toUpperCase()} request to: ${config.url}`);
+    }
     return config;
   },
   (error) => {
+    console.error('Request error:', getErrorMessage(error));
     return Promise.reject(error);
   }
 );
 
-// Response interceptor to handle errors
+// Response interceptor to handle errors with meaningful messages
 api.interceptors.response.use(
   (response) => {
     return response;
   },
   (error) => {
-    console.error('API Error:', error.response?.data || error.message);
+    const parsed = parseError(error);
+    
+    // Log error for debugging
+    console.error('API Error:', {
+      message: parsed.message,
+      errorCode: parsed.errorCode,
+      statusCode: parsed.statusCode,
+      url: error.config?.url,
+      method: error.config?.method,
+    });
     
     // Handle 401 Unauthorized - token expired or invalid
-    if (error.response?.status === 401) {
-      TokenManager.removeToken();
-      // Redirect to login page
-      window.location.href = '/login';
+    if (parsed.statusCode === 401 || parsed.isAuthError) {
+      // Only redirect if we're not already on the login page
+      if (!window.location.pathname.includes('/login')) {
+        TokenManager.removeToken();
+        // Redirect to login page with return URL
+        const returnUrl = window.location.pathname;
+        window.location.href = `/login${returnUrl !== '/' ? `?returnUrl=${encodeURIComponent(returnUrl)}` : ''}`;
+      }
+    }
+    
+    // Enhance the error object with parsed message
+    if (error.response?.data) {
+      error.response.data.parsedMessage = parsed.message;
     }
     
     return Promise.reject(error);
@@ -354,6 +377,134 @@ export class CourseAPI {
   // Remove level from course
   static async removeLevel(courseId: string, levelNumber: number): Promise<ApiResponse<Course>> {
     const response = await api.delete(`/courses/${courseId}/levels/${levelNumber}`);
+    return response.data;
+  }
+}
+
+export class CreditAPI {
+  // Get student credits
+  static async getStudentCredits(studentId: string): Promise<ApiResponse> {
+    const response = await api.get(`/credits/student/${studentId}`);
+    return response.data;
+  }
+
+  // Get credit summary for a student
+  static async getCreditSummary(studentId: string): Promise<ApiResponse> {
+    const response = await api.get(`/credits/student/${studentId}/summary`);
+    return response.data;
+  }
+
+  // Create credit for student
+  static async createCredit(data: {
+    studentId: string;
+    amount: number;
+    description: string;
+    paymentMethod?: string;
+    transactionId?: string;
+    remarks?: string;
+  }): Promise<ApiResponse> {
+    const response = await api.post('/credits/add', data);
+    return response.data;
+  }
+
+  // Get all credits (admin)
+  static async getAllCredits(): Promise<ApiResponse> {
+    const response = await api.get('/credits');
+    return response.data;
+  }
+}
+
+export class BatchAPI {
+  // Get all batches with filters
+  static async getBatches(filters: BatchFilters = {}): Promise<ApiResponse<Batch[]>> {
+    const params = new URLSearchParams();
+    
+    if (filters.status) params.append('status', filters.status);
+    if (filters.stage) params.append('stage', filters.stage);
+    if (filters.level) params.append('level', filters.level.toString());
+    
+    const response = await api.get(`/batches?${params.toString()}`);
+    return response.data;
+  }
+
+  // Get batch by ID
+  static async getBatchById(id: string): Promise<ApiResponse<Batch>> {
+    const response = await api.get(`/batches/${id}`);
+    return response.data;
+  }
+
+  // Get available batches for a stage and level
+  static async getAvailableBatches(stage: 'beginner' | 'intermediate' | 'advanced', level: number): Promise<ApiResponse<Batch[]>> {
+    const response = await api.get(`/batches/available?stage=${stage}&level=${level}`);
+    return response.data;
+  }
+
+  // Get batch statistics
+  static async getBatchStats(): Promise<ApiResponse<BatchStats>> {
+    const response = await api.get('/batches/stats');
+    return response.data;
+  }
+
+  // Get students in a batch
+  static async getBatchStudents(batchId: string): Promise<ApiResponse<Student[]>> {
+    const response = await api.get(`/batches/${batchId}/students`);
+    return response.data;
+  }
+
+  // Create new batch
+  static async createBatch(data: CreateBatchData): Promise<ApiResponse<Batch>> {
+    const response = await api.post('/batches', data);
+    return response.data;
+  }
+
+  // Update batch
+  static async updateBatch(id: string, data: UpdateBatchData): Promise<ApiResponse<Batch>> {
+    const response = await api.put(`/batches/${id}`, data);
+    return response.data;
+  }
+
+  // End batch
+  static async endBatch(id: string): Promise<ApiResponse<Batch>> {
+    const response = await api.patch(`/batches/${id}/end`);
+    return response.data;
+  }
+
+  // Delete batch
+  static async deleteBatch(id: string): Promise<ApiResponse> {
+    const response = await api.delete(`/batches/${id}`);
+    return response.data;
+  }
+
+  // Validate schedule for conflicts
+  static async validateSchedule(schedule: ScheduleEntry[], excludeBatchId?: string): Promise<ApiResponse<ScheduleValidationResult>> {
+    const response = await api.post('/batches/validate-schedule', {
+      schedule,
+      excludeBatchId
+    });
+    return response.data;
+  }
+
+  // Assign student to batch
+  static async assignStudentToBatch(studentId: string, batchId: string): Promise<ApiResponse<Student>> {
+    const response = await api.patch(`/batches/${batchId}/assign/${studentId}`);
+    return response.data;
+  }
+
+  // Remove student from batch
+  static async removeStudentFromBatch(studentId: string): Promise<ApiResponse<Student>> {
+    const response = await api.patch(`/batches/remove/${studentId}`);
+    return response.data;
+  }
+
+  // Get eligible students for a batch (matching stage/level, excluding already in batch)
+  static async getEligibleStudents(batchId: string): Promise<ApiResponse<EligibleStudent[]>> {
+    const response = await api.get(`/batches/${batchId}/eligible-students`);
+    return response.data;
+  }
+
+  // Bulk assign students to batch
+  static async bulkAssignStudents(batchId: string, studentIds: string[]): Promise<ApiResponse<BulkAssignResult>> {
+    const response = await api.post(`/batches/${batchId}/assign-bulk`, { studentIds });
     return response.data;
   }
 }

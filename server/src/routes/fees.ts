@@ -5,11 +5,32 @@ import FeeRecord from '../models/FeeRecord.js';
 import Course from '../models/Course.js';
 import Student from '../models/Student.js';
 import { FeeService } from '../services/FeeService.js';
+import { StudentCreditService } from '../services/StudentCreditService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ApiResponse, IFeeRecord, FeeStats, PaginatedResponse } from '../types/index.js';
+import { cleanPhoneNumber, parseExcelDate } from '../utils/fieldValidation.js';
 
 const router = Router();
+
+// Helper function to convert status filter to date-based query
+function getStatusQuery(status: string): any {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  
+  switch(status) {
+    case 'paid':
+      return { paymentDate: { $ne: null }, $expr: { $gte: ['$paidAmount', '$feeAmount'] } };
+    case 'partially_paid':
+      return { paymentDate: { $ne: null }, $expr: { $lt: ['$paidAmount', '$feeAmount'] } };
+    case 'overdue':
+      return { paymentDate: null, dueDate: { $lt: now } };
+    case 'upcoming':
+      return { paymentDate: null, dueDate: { $gte: now } };
+    default:
+      return {};
+  }
+}
 
 // Configure multer for file upload (in-memory storage)
 const upload = multer({
@@ -48,7 +69,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response<ApiResponse<Pagi
   const query: any = {};
   
   if (status) {
-    query.status = status;
+    Object.assign(query, getStatusQuery(status));
   }
   
   if (stage) {
@@ -112,7 +133,13 @@ router.get('/student/:studentId', asyncHandler(async (req: Request, res: Respons
 
 // GET /api/fees/overdue - Get all overdue fees
 router.get('/overdue', asyncHandler(async (req: Request, res: Response<ApiResponse<IFeeRecord[]>>) => {
-  const overdueFees = await FeeRecord.find({ status: 'overdue' })
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  
+  const overdueFees = await FeeRecord.find({ 
+    paymentDate: null,
+    dueDate: { $lt: now }
+  })
     .sort({ dueDate: 1 })
     .populate('studentId', 'studentName email phone');
   
@@ -129,16 +156,6 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Update overdue fees automatically (both upcoming and partially_paid)
-  await FeeRecord.updateMany(
-    {
-      status: { $in: ['upcoming', 'partially_paid'] },
-      dueDate: { $lt: today },
-      $expr: { $lt: ['$paidAmount', '$feeAmount'] } // Ensure not fully paid
-    },
-    { status: 'overdue' }
-  );
-
   const [
     totalCollected,
     totalUpcoming,
@@ -150,22 +167,22 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
     studentStatusCounts
   ] = await Promise.all([
     FeeRecord.aggregate([
-      { $match: { status: 'paid' } },
+      { $match: { paymentDate: { $ne: null }, $expr: { $gte: ['$paidAmount', '$feeAmount'] } } },
       { $group: { _id: null, total: { $sum: '$paidAmount' } } }
     ]),
     FeeRecord.aggregate([
-      { $match: { status: 'upcoming' } },
+      { $match: { paymentDate: null, dueDate: { $gte: today } } },
       { $group: { _id: null, total: { $sum: '$feeAmount' } } }
     ]),
     FeeRecord.aggregate([
-      { $match: { status: 'overdue' } },
+      { $match: { paymentDate: null, dueDate: { $lt: today } } },
       { $group: { _id: null, total: { $sum: '$feeAmount' } } }
     ]),
     FeeRecord.aggregate([
-      { $match: { status: 'partially_paid' } },
+      { $match: { paymentDate: { $ne: null }, $expr: { $lt: ['$paidAmount', '$feeAmount'] } } },
       { $group: { _id: null, total: { $sum: '$paidAmount' } } }
     ]),
-    FeeRecord.find({ status: { $in: ['paid', 'partially_paid'] } })
+    FeeRecord.find({ paymentDate: { $ne: null } })
       .sort({ paymentDate: -1 })
       .limit(10),
     FeeRecord.find(),
@@ -174,16 +191,75 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
       {
         $group: {
           _id: '$studentId',
-          statuses: { $push: '$status' }
+          fees: {
+            $push: {
+              paymentDate: '$paymentDate',
+              paidAmount: '$paidAmount',
+              feeAmount: '$feeAmount',
+              dueDate: '$dueDate'
+            }
+          }
         }
       },
       {
         $project: {
           studentId: '$_id',
-          hasPaid: { $in: ['paid', '$statuses'] },
-          hasUpcoming: { $in: ['upcoming', '$statuses'] },
-          hasOverdue: { $in: ['overdue', '$statuses'] },
-          hasPartiallyPaid: { $in: ['partially_paid', '$statuses'] }
+          hasPaid: {
+            $anyElementTrue: {
+              $map: {
+                input: '$fees',
+                as: 'fee',
+                in: {
+                  $and: [
+                    { $ne: ['$$fee.paymentDate', null] },
+                    { $gte: ['$$fee.paidAmount', '$$fee.feeAmount'] }
+                  ]
+                }
+              }
+            }
+          },
+          hasUpcoming: {
+            $anyElementTrue: {
+              $map: {
+                input: '$fees',
+                as: 'fee',
+                in: {
+                  $and: [
+                    { $eq: ['$$fee.paymentDate', null] },
+                    { $gte: ['$$fee.dueDate', today] }
+                  ]
+                }
+              }
+            }
+          },
+          hasOverdue: {
+            $anyElementTrue: {
+              $map: {
+                input: '$fees',
+                as: 'fee',
+                in: {
+                  $and: [
+                    { $eq: ['$$fee.paymentDate', null] },
+                    { $lt: ['$$fee.dueDate', today] }
+                  ]
+                }
+              }
+            }
+          },
+          hasPartiallyPaid: {
+            $anyElementTrue: {
+              $map: {
+                input: '$fees',
+                as: 'fee',
+                in: {
+                  $and: [
+                    { $ne: ['$$fee.paymentDate', null] },
+                    { $lt: ['$$fee.paidAmount', '$$fee.feeAmount'] }
+                  ]
+                }
+              }
+            }
+          }
         }
       },
       {
@@ -217,13 +293,21 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
         stageBreakdown[stage].students += 1;
       }
       
-      // Track amounts
-      if (fee.status === 'paid') {
+      // Calculate status for this fee
+      let feeStatus: 'paid' | 'partially_paid' | 'overdue' | 'upcoming';
+      if (fee.paymentDate) {
+        feeStatus = fee.paidAmount >= fee.feeAmount ? 'paid' : 'partially_paid';
+      } else {
+        feeStatus = fee.dueDate < today ? 'overdue' : 'upcoming';
+      }
+      
+      // Track amounts based on calculated status
+      if (feeStatus === 'paid') {
         stageBreakdown[stage].collected += fee.paidAmount;
         stageBreakdown[stage].paidStudents += 1;
-      } else if (fee.status === 'upcoming') {
+      } else if (feeStatus === 'upcoming') {
         stageBreakdown[stage].upcoming += fee.feeAmount;
-      } else if (fee.status === 'overdue') {
+      } else if (feeStatus === 'overdue') {
         stageBreakdown[stage].overdue += fee.feeAmount;
       }
     }
@@ -232,7 +316,15 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
   // Calculate overdue students
   const overdueStudentMap = new Map();
   allFees.forEach((fee: any) => {
-    if (fee.status === 'overdue') {
+    // Calculate status for this fee
+    let feeStatus: 'paid' | 'partially_paid' | 'overdue' | 'upcoming';
+    if (fee.paymentDate) {
+      feeStatus = fee.paidAmount >= fee.feeAmount ? 'paid' : 'partially_paid';
+    } else {
+      feeStatus = fee.dueDate < today ? 'overdue' : 'upcoming';
+    }
+    
+    if (feeStatus === 'overdue') {
       const key = fee.studentId.toString();
       if (!overdueStudentMap.has(key)) {
         overdueStudentMap.set(key, {
@@ -415,15 +507,15 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response<ApiRespons
 }));
 
 // POST /api/fees/bulk-payment - Record payment for multiple months
-router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<ApiResponse<IFeeRecord[]>>) => {
+router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<ApiResponse<any>>) => {
   const { studentId, months, paymentDate, paymentMethod, transactionId, remarks, paidAmount } = req.body;
   const userId = (req as any).user.id;
   
   // Validation
-  if (!studentId || !months || !Array.isArray(months) || months.length === 0) {
+  if (!studentId) {
     return res.status(400).json({
       success: false,
-      error: 'Student ID and months array are required',
+      error: 'Student ID is required',
       timestamp: new Date().toISOString()
     });
   }
@@ -473,6 +565,41 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
   }
   
   const feeAmount = levelConfig.feeAmount;
+  
+  // Check if student has a batch assigned
+  if (!student.batchId) {
+    // Student has no batch - create active credit instead
+    const totalAmount = paidAmount || (months && Array.isArray(months) ? months.length * feeAmount : feeAmount);
+    
+    const credit = await StudentCreditService.addCredit({
+      studentId,
+      studentName: student.studentName,
+      amount: totalAmount,
+      description: `Payment received before batch assignment - ${paymentMethod}`,
+      paymentMethod,
+      transactionId,
+      processedBy: userId
+    });
+    
+    return res.status(201).json({
+      success: true,
+      data: {
+        credit,
+        message: 'Student has no batch assigned. Credit created and will be applied when student is assigned to a batch.'
+      },
+      message: 'Credit added successfully for student without batch',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  // Student has a batch - proceed with normal fee payment
+  if (!months || !Array.isArray(months) || months.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Months array is required for students with batch assignment',
+      timestamp: new Date().toISOString()
+    });
+  }
   
   // Validate transaction ID if provided
   if (transactionId) {
@@ -530,19 +657,11 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
         existingFee.remarks = remarks;
         existingFee.updatedBy = userId;
         
-        // Update status based on paid amount
-        if (existingFee.paidAmount >= feeAmount) {
-          existingFee.status = 'paid';
-        } else if (existingFee.paidAmount > 0) {
-          existingFee.status = 'partially_paid';
-        }
-        
         await existingFee.save();
         createdFees.push(existingFee);
       } else {
-        // Create new fee record
+        // Create new fee record (status is computed dynamically)
         const amountToPay = paidAmount || feeAmount;
-        const status = amountToPay >= feeAmount ? 'paid' : 'partially_paid';
         
         const fee = await FeeRecord.create({
           studentId,
@@ -551,7 +670,6 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
           level: student.level || student.skillLevel,
           feeMonth: monthData.feeMonth,
           dueDate: new Date(monthData.dueDate),
-          status,
           feeAmount: feeAmount,
           paidAmount: amountToPay,
           paymentDate: new Date(paymentDate),
@@ -616,7 +734,7 @@ async function createFeeRecord(data: any, userId: string): Promise<IFeeRecord> {
     }
   }
   
-  // Create fee record
+  // Create fee record (status is computed dynamically)
   const fee = await FeeRecord.create({
     studentId,
     studentName: student.studentName,
@@ -624,7 +742,6 @@ async function createFeeRecord(data: any, userId: string): Promise<IFeeRecord> {
     level: student.level || student.skillLevel,
     feeMonth,
     dueDate: new Date(dueDate),
-    status: status || 'upcoming',
     feeAmount,
     paidAmount: paidAmount || 0,
     paymentDate: paymentDate ? new Date(paymentDate) : undefined,
@@ -709,8 +826,14 @@ router.post('/generate-pending-all', asyncHandler(async (req: Request, res: Resp
 // GET /api/fees/students-overdue-status - Get overdue status for all students
 router.get('/students-overdue-status', asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   try {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    
     // Get all students with overdue fees
-    const overdueRecords = await FeeRecord.find({ status: 'overdue' }).distinct('studentId');
+    const overdueRecords = await FeeRecord.find({ 
+      paymentDate: null,
+      dueDate: { $lt: now }
+    }).distinct('studentId');
     
     // Create a map of student IDs with overdue fees
     const overdueMap: Record<string, boolean> = {};
@@ -762,64 +885,6 @@ router.get('/payable/:studentId', asyncHandler(async (req: Request, res: Respons
     });
   }
 }));
-
-// Helper function to clean phone number
-const cleanPhoneNumber = (phone: string | number): string | null => {
-  if (!phone) return null;
-  
-  // Convert to string and remove all non-digit characters
-  const cleaned = String(phone).replace(/\D/g, '');
-  
-  // Check if it's a valid 10-digit Indian mobile number
-  if (cleaned.length === 10 && /^[6-9]/.test(cleaned)) {
-    return cleaned;
-  }
-  
-  return null;
-};
-
-// Helper function to parse Excel date
-const parseExcelDate = (dateValue: any): Date | null => {
-  if (!dateValue || dateValue === 'nan' || String(dateValue).toLowerCase() === 'nan') {
-    return null;
-  }
-
-  try {
-    // Case 1: Already a Date object from xlsx
-    if (dateValue instanceof Date) {
-      return dateValue;
-    }
-    // Case 2: Excel serial date (number)
-    else if (typeof dateValue === 'number') {
-      // Excel serial date: days since 1900-01-01 (with leap year bug)
-      const excelEpoch = new Date(1900, 0, 1);
-      const daysOffset = dateValue - 2; // Adjust for Excel's leap year bug
-      return new Date(excelEpoch.getTime() + daysOffset * 24 * 60 * 60 * 1000);
-    }
-    // Case 3: String format
-    else if (typeof dateValue === 'string') {
-      const dateStr = dateValue.trim();
-      // Try to parse yyyy-mm-dd format explicitly
-      const ymdMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (ymdMatch && ymdMatch[1] && ymdMatch[2] && ymdMatch[3]) {
-        const year = parseInt(ymdMatch[1]);
-        const month = parseInt(ymdMatch[2]);
-        const day = parseInt(ymdMatch[3]);
-        return new Date(year, month - 1, day);
-      } else {
-        // Try standard Date parsing as fallback
-        const parsed = new Date(dateStr);
-        if (!isNaN(parsed.getTime())) {
-          return parsed;
-        }
-      }
-    }
-  } catch (e) {
-    console.warn(`Failed to parse date: ${dateValue}`);
-  }
-  
-  return null;
-};
 
 // Helper function to normalize payment status
 const normalizePaymentStatus = (status: any): 'upcoming' | 'paid' | 'overdue' | 'partially_paid' | 'discontinued' => {
@@ -1007,6 +1072,69 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
           continue;
         }
 
+        // If student has no batch, create credits instead of fee records
+        if (!student.batchId) {
+          // Calculate total paid amount from all cycles
+          const cycles = [
+            { status: row['Payment Status'], paymentDate: row['Payment date'] },
+            { status: row['Payment Status.1'], paymentDate: row['Payment date.1'] },
+            { status: row['Payment Status.2'], paymentDate: row['Payment date.2'] },
+            { status: row['Payment Status.3'], paymentDate: row['Payment date.3'] }
+          ];
+          
+          let totalPaidAmount = 0;
+          let latestPaymentDate: Date | null = null;
+          
+          // Get course configuration for fee amount
+          const stageForCredit = student.stage || student.skillCategory;
+          if (stageForCredit) {
+            const courseForCredit = await Course.findOne({ courseName: stageForCredit, isActive: true });
+            if (courseForCredit && courseForCredit.levels.length > 0) {
+              const studentLevelForCredit = student.level || student.skillLevel || 1;
+              const levelConfigForCredit = courseForCredit.levels.find((l: any) => l.levelNumber === studentLevelForCredit) || courseForCredit.levels[0];
+              const feeAmountForCredit = levelConfigForCredit?.feeAmount || 0;
+              
+              for (const cycle of cycles) {
+                const status = normalizePaymentStatus(cycle.status);
+                if (status === 'paid') {
+                  totalPaidAmount += feeAmountForCredit;
+                  const paymentDate = parseExcelDate(cycle.paymentDate);
+                  if (paymentDate && (!latestPaymentDate || paymentDate > latestPaymentDate)) {
+                    latestPaymentDate = paymentDate;
+                  }
+                }
+              }
+              
+              if (totalPaidAmount > 0) {
+                // Create credit for the student
+                await StudentCreditService.addCredit({
+                  studentId: (student._id as any).toString(),
+                  studentName: student.studentName,
+                  amount: totalPaidAmount,
+                  description: `Bulk upload credit - ${cycles.filter(c => normalizePaymentStatus(c.status) === 'paid').length} month(s) worth of fees`,
+                  paymentMethod: 'cash',
+                  processedBy: userId,
+                  remarks: `Created via bulk fee upload. Student has no batch assigned, so payment stored as credit.`
+                });
+                results.successful++;
+              } else {
+                results.skipped++;
+              }
+            } else {
+              results.skipped++;
+              results.errors.push({
+                row: rowNum,
+                phone: cleanedPhone,
+                error: 'No course configuration found for credit calculation',
+                data: { studentName: student.studentName }
+              });
+            }
+          } else {
+            results.skipped++;
+          }
+          continue; // Skip fee record creation for students without batch
+        }
+
         // Get course configuration for fee amount
         const stage = student.stage || student.skillCategory;
         if (!stage) {
@@ -1088,7 +1216,6 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
 
             if (existingFee) {
               // Update existing
-              existingFee.status = 'paid';
               existingFee.paidAmount = feeAmount;
               existingFee.paymentDate = parsedPaymentDate;
               existingFee.paymentMethod = 'cash';
@@ -1096,7 +1223,7 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
               await existingFee.save();
               results.updated++;
             } else {
-              // Create new
+              // Create new (status is computed dynamically)
               await FeeRecord.create({
                 studentId: (student._id as any).toString(),
                 studentName: student.studentName,
@@ -1104,7 +1231,6 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
                 level: student.level || student.skillLevel,
                 feeMonth,
                 dueDate,
-                status: 'paid',
                 feeAmount,
                 paidAmount: feeAmount,
                 paymentDate: parsedPaymentDate,
@@ -1119,22 +1245,11 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
           // Parse payment date
           const parsedPaymentDate = parseExcelDate(cycle.paymentDate);
 
-          // Determine final status and paid amount
-          let finalStatus: 'upcoming' | 'paid' | 'overdue' | 'partially_paid' = status === 'paid' ? 'paid' : 'upcoming';
+          // Determine paid amount
           let paidAmount = 0;
           
           if (status === 'paid') {
             paidAmount = feeAmount;
-            finalStatus = 'paid';
-          } else {
-            // Check if it's overdue
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            if (dueDate < today) {
-              finalStatus = 'overdue';
-            } else {
-              finalStatus = 'upcoming';
-            }
           }
 
           // Check if fee record already exists
@@ -1145,7 +1260,6 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
 
           if (existingFee) {
             // Update existing fee record
-            existingFee.status = finalStatus;
             existingFee.paidAmount = paidAmount;
             if (parsedPaymentDate) {
               existingFee.paymentDate = parsedPaymentDate;
@@ -1157,7 +1271,7 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
             await existingFee.save();
             results.updated++;
           } else {
-            // Create new fee record
+            // Create new fee record (status is computed dynamically)
             const feeData: any = {
               studentId: (student._id as any).toString(),
               studentName: student.studentName,
@@ -1165,7 +1279,6 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
               level: student.level || student.skillLevel,
               feeMonth,
               dueDate,
-              status: finalStatus,
               feeAmount,
               paidAmount,
               updatedBy: userId

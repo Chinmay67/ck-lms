@@ -16,6 +16,7 @@ import BulkActionsBar from './students/BulkActionsBar';
 import ExportButton from './students/ExportButton';
 import StudentFeesTab from './fees/StudentFeesTab';
 import FeePaymentModal from './fees/FeePaymentModal';
+import AddCreditModal from './fees/AddCreditModal';
 import BulkUploadModal from './students/BulkUploadModal';
 
 const StudentsList = () => {
@@ -47,6 +48,7 @@ const StudentsList = () => {
   const [feesStudent, setFeesStudent] = useState<Student | null>(null);
   const [showFeesModal, setShowFeesModal] = useState(false);
   const [showFeePaymentAfterCreate, setShowFeePaymentAfterCreate] = useState(false);
+  const [showCreditModalAfterCreate, setShowCreditModalAfterCreate] = useState(false);
   const [newlyCreatedStudent, setNewlyCreatedStudent] = useState<Student | null>(null);
 
   // Fetch students
@@ -167,9 +169,20 @@ const StudentsList = () => {
         if (response.success && response.data) {
           toast.success('Student created successfully!');
           setIsModalOpen(false);
-          // Show fee payment modal for new student
-          setNewlyCreatedStudent(response.data);
-          setShowFeePaymentAfterCreate(true);
+          // Get the created student from response
+          const createdStudent = (response.data as any).student || response.data;
+          setNewlyCreatedStudent(createdStudent);
+          
+          // Show appropriate modal based on batch assignment
+          // Check for truthy batchId (not null, undefined, or empty string)
+          const hasBatch = studentData.batchId && studentData.batchId !== '' && studentData.batchId !== null;
+          if (hasBatch) {
+            // Has batch - show fee payment modal
+            setShowFeePaymentAfterCreate(true);
+          } else {
+            // No batch - show credit modal
+            setShowCreditModalAfterCreate(true);
+          }
         } else {
           toast.error(response.message || 'Failed to create student');
           return;
@@ -193,6 +206,7 @@ const StudentsList = () => {
 
   const handleFeePaymentSuccess = () => {
     setShowFeePaymentAfterCreate(false);
+    setShowCreditModalAfterCreate(false);
     setNewlyCreatedStudent(null);
     fetchStudents();
     fetchOverdueStatus();
@@ -200,8 +214,9 @@ const StudentsList = () => {
 
   const handleSkipFeePayment = () => {
     setShowFeePaymentAfterCreate(false);
+    setShowCreditModalAfterCreate(false);
     setNewlyCreatedStudent(null);
-    toast('You can record fees later from the student list', { icon: 'ℹ️' });
+    toast('You can record fees/credits later from the student list', { icon: 'ℹ️' });
   };
 
   const handleViewFees = (student: Student) => {
@@ -382,9 +397,17 @@ const StudentsList = () => {
         )}
       </Modal>
 
-      {/* Fee Payment Modal after Student Creation */}
+      {/* Fee Payment Modal after Student Creation (with batch) */}
       <FeePaymentModal
         isOpen={showFeePaymentAfterCreate}
+        onClose={handleSkipFeePayment}
+        student={newlyCreatedStudent}
+        onSuccess={handleFeePaymentSuccess}
+      />
+
+      {/* Credit Modal after Student Creation (without batch) */}
+      <AddCreditModal
+        isOpen={showCreditModalAfterCreate}
         onClose={handleSkipFeePayment}
         student={newlyCreatedStudent}
         onSuccess={handleFeePaymentSuccess}

@@ -1,4 +1,4 @@
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
 export interface IUser extends Document {
   email: string;
@@ -21,15 +21,36 @@ export interface IStudent extends Document {
   alternateEmail?: string;
   address?: string;
   combinedSkill?: string; // Raw skill string from email (e.g., "Beginner Level - 1")
-  skillCategory?: 'beginner' | 'intermediate' | 'advanced'; // Parsed category
-  skillLevel?: 1 | 2 | 3; // Parsed level
-  stage?: 'beginner' | 'intermediate' | 'advanced'; // Manual entry stage
-  level?: 1 | 2 | 3; // Manual entry level
-  batch?: string; // Batch identifier assigned by admin
+  skillCategory?: 'beginner' | 'intermediate' | 'advanced'; // DEPRECATED: Parsed category
+  skillLevel?: 1 | 2 | 3; // DEPRECATED: Parsed level
+  stage: 'beginner' | 'intermediate' | 'advanced'; // Required: Student's current stage
+  level: 1 | 2 | 3; // Required: Student's current level
+  batch?: string; // DEPRECATED: Use batchId instead
+  batchId?: Types.ObjectId | null; // Reference to Batch model
   referredBy?: string;
   emailId?: string; // Gmail message ID for tracking
   enrollmentDate: Date; // When student joined the course
+  feeCycleStartDate?: Date; // Date when fee cycle starts (batch start date)
   isActive: boolean; // Whether student is active or deactivated
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IStudentCredit extends Document {
+  studentId: Types.ObjectId; // Reference to Student
+  studentName: string;
+  transactionType: 'credit_added' | 'credit_used' | 'credit_refund' | 'credit_adjustment';
+  amount: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  description: string;
+  paymentMethod?: 'cash' | 'online' | 'card' | 'upi' | 'other';
+  transactionId?: string;
+  feeRecordId?: Types.ObjectId; // Reference to FeeRecord
+  feeMonth?: string;
+  processedBy: Types.ObjectId; // Reference to User
+  processedAt: Date;
+  remarks?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -77,6 +98,8 @@ export interface ApiResponse<T = any> {
   data?: T;
   message?: string;
   error?: string;
+  errorCode?: string;
+  count?: number;
   timestamp: string;
 }
 
@@ -116,7 +139,7 @@ export interface ICourse extends Document {
   isActive: boolean;
   displayOrder: number;
   levels: ICourseLevel[];
-  createdBy: any; // Reference to User
+  createdBy: Types.ObjectId; // Reference to User
   createdAt: Date;
   updatedAt: Date;
   numberOfLevels?: number;
@@ -125,13 +148,14 @@ export interface ICourse extends Document {
 }
 
 export interface IFeeRecord extends Document {
-  studentId: any; // Reference to Student
+  studentId: Types.ObjectId; // Reference to Student
   studentName: string;
   stage: 'beginner' | 'intermediate' | 'advanced';
   level: 1 | 2 | 3;
   feeMonth: string; // e.g., 'January 2024'
   dueDate: Date;
-  status: 'upcoming' | 'paid' | 'overdue' | 'partially_paid';
+  // Note: 'status' is a virtual computed field, not stored in DB
+  // Computed as: paid | partially_paid | overdue | upcoming
   feeAmount: number;
   paidAmount: number;
   paymentDate?: Date;
@@ -139,9 +163,13 @@ export interface IFeeRecord extends Document {
   transactionId?: string;
   paymentScreenshot?: string; // URL - optional for future
   remarks?: string;
-  updatedBy?: any; // Reference to User
+  updatedBy?: Types.ObjectId; // Reference to User
   createdAt: Date;
   updatedAt: Date;
+  // Virtual fields
+  status?: 'upcoming' | 'paid' | 'overdue' | 'partially_paid';
+  remainingAmount?: number;
+  paymentPercentage?: number;
 }
 
 export interface FeeStats {
@@ -168,4 +196,30 @@ export interface FeeStats {
     overdueAmount: number;
     overdueMonths: number;
   }>;
+}
+
+export interface IScheduleEntry {
+  dayOfWeek: number; // 0-6 (0=Sunday, 6=Saturday)
+  startTime: string; // HH:MM format (24-hour)
+}
+
+export interface IBatch extends Document {
+  batchName: string;
+  batchCode: string;
+  stage: 'beginner' | 'intermediate' | 'advanced';
+  level: 1 | 2 | 3;
+  maxStudents: number | null;
+  schedule: IScheduleEntry[];
+  status: 'active' | 'ended' | 'draft';
+  startDate: Date;
+  endDate: Date | null;
+  description: string;
+  createdBy: Types.ObjectId; // Reference to User
+  createdAt: Date;
+  updatedAt: Date;
+  currentStudentCount?: number; // Virtual field
+  
+  // Instance methods
+  isAtCapacity(): Promise<boolean>;
+  canAcceptStudent(): Promise<{ canAccept: boolean; reason?: string }>;
 }
