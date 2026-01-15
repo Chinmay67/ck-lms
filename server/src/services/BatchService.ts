@@ -56,18 +56,6 @@ export class BatchService {
    * Create a new batch
    */
   static async createBatch(batchData: Partial<IBatch>, createdBy: string): Promise<IBatch> {
-    // Check for schedule conflicts if status is active
-    if (batchData.status === 'active' && batchData.schedule && batchData.schedule.length > 0) {
-      const { hasConflict, conflicts } = await this.checkScheduleConflicts(batchData.schedule);
-      
-      if (hasConflict) {
-        const conflictDetails = conflicts.map(c => 
-          `${c.batchName} on ${c.dayName} at ${c.startTime}`
-        ).join(', ');
-        throw new Error(`Schedule conflicts with existing active batches: ${conflictDetails}`);
-      }
-    }
-
     const batch = new Batch({
       ...batchData,
       createdBy
@@ -88,24 +76,6 @@ export class BatchService {
     
     if (!batch) {
       return null;
-    }
-
-    // If updating schedule or status to active, check for conflicts
-    const newSchedule = updateData.schedule || batch.schedule;
-    const newStatus = updateData.status || batch.status;
-
-    if (newStatus === 'active' && newSchedule && newSchedule.length > 0) {
-      const { hasConflict, conflicts } = await this.checkScheduleConflicts(
-        newSchedule,
-        batchId
-      );
-      
-      if (hasConflict) {
-        const conflictDetails = conflicts.map(c => 
-          `${c.batchName} on ${c.dayName} at ${c.startTime}`
-        ).join(', ');
-        throw new Error(`Schedule conflicts with existing active batches: ${conflictDetails}`);
-      }
     }
 
     // Update batch

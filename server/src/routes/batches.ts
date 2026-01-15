@@ -13,20 +13,22 @@ const router = express.Router();
  * @access  Superadmin only
  */
 router.post('/', authenticate, authorize('superadmin'), asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
-  const { batchName, stage, level, maxCapacity, schedule, startDate, status } = req.body;
+  const { batchName, stage, level, maxStudents, schedule, startDate, status } = req.body;
   
   // Validation with descriptive messages
-  assert.required({ batchName, stage, level, maxCapacity, startDate }, {
+  assert.required({ batchName, stage, level, startDate }, {
     batchName: 'Batch name',
     stage: 'Stage',
     level: 'Level',
-    maxCapacity: 'Maximum capacity',
     startDate: 'Start date'
   });
   
   assert.inArray(stage, ['beginner', 'intermediate', 'advanced'], 'Stage');
   assert.positiveNumber(level, 'Level');
-  assert.positiveNumber(maxCapacity, 'Maximum capacity');
+  
+  if (maxStudents !== null && maxStudents !== undefined) {
+    assert.positiveNumber(maxStudents, 'Maximum students');
+  }
   
   if (level > 5) {
     throw new ValidationError('Level cannot be greater than 5');
