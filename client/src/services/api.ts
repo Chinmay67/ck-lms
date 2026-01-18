@@ -2,12 +2,12 @@ import axios from 'axios';
 import type { Student, ApiResponse, PaginatedResponse, StudentFilters } from '../types/student';
 import type { Course, CourseFormData, LevelFormData } from '../types/course';
 import type { Batch, CreateBatchData, UpdateBatchData, BatchStats, ScheduleEntry, ScheduleValidationResult, BatchFilters, EligibleStudent, BulkAssignResult } from '../types/batch';
-import { getMockPaginatedStudents } from '../mocks/students';
+
 import { env } from '../config/env';
 import { parseError, getErrorMessage } from '../utils/errorHandler';
 
 // Toggle between mock and real API
-const USE_MOCK_DATA = false; // Set to false to use real backend
+// const USE_MOCK_DATA = false; // Set to false to use real backend
 
 // Auth token management
 const TOKEN_KEY = 'auth_token';
@@ -149,23 +149,23 @@ export class StudentsAPI {
   // Get all students with pagination and filters
   static async getStudents(filters: StudentFilters = {}): Promise<ApiResponse<PaginatedResponse<Student>>> {
     // Use mock data if enabled
-    if (USE_MOCK_DATA) {
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          const mockData = getMockPaginatedStudents(
-            filters.page || 1,
-            filters.limit || 10,
-            filters.search
-          );
-          const mockResponse: ApiResponse<PaginatedResponse<Student>> = {
-            success: true,
-            data: mockData.data,
-            timestamp: new Date().toISOString(),
-          };
-          resolve(mockResponse);
-        }, 300); // Simulate network delay
-      });
-    }
+  //   if (USE_MOCK_DATA) {
+  //     return new Promise((resolve) => {
+  //       setTimeout(() => {
+  //         const mockData = getMockPaginatedStudents(
+  //           filters.page || 1,
+  //           filters.limit || 10,
+  //           filters.search
+  //         );
+  //         const mockResponse: ApiResponse<PaginatedResponse<Student>> = {
+  //           success: true,
+  //           data: mockData.data,
+  //           timestamp: new Date().toISOString(),
+  //         };
+  //         resolve(mockResponse);
+  //       }, 300); // Simulate network delay
+  //     });
+  //   }
 
     const params = new URLSearchParams();
 
