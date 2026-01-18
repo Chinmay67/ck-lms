@@ -1,10 +1,12 @@
 export interface Student {
   _id: string;
+  studentCode: string; // Unique system-generated identifier
+  userId?: string; // Reference to User (guardian account) - can be shared by siblings
   studentName: string;
   dob?: string;
   parentName?: string;
-  email: string;
-  phone?: string;
+  email?: string; // Optional - at least one of email/phone required
+  phone?: string; // Optional - at least one of email/phone required
   alternatePhone?: string;
   alternateEmail?: string;
   address?: string;

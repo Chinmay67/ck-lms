@@ -277,23 +277,15 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
         const address = row['Address'];
         const referredBy = row['Referred By'];
         
-        // STRICT VALIDATION: Must have both valid phone and email
+        // VALIDATION: Must have at least email OR phone (not necessarily both)
         const cleanedPhone = cleanPhoneNumber(contactNumber);
-        if (!cleanedPhone) {
-          results.skipped++;
-          results.errors.push({
-            row: rowNum,
-            error: 'Invalid or missing phone number (must be 10-digit Indian mobile)',
-            data: { name, contactNumber, email }
-          });
-          continue;
-        }
+        const cleanedEmail = email && isValidEmail(email) ? String(email).trim().toLowerCase() : null;
         
-        if (!isValidEmail(email)) {
+        if (!cleanedPhone && !cleanedEmail) {
           results.skipped++;
           results.errors.push({
             row: rowNum,
-            error: 'Invalid or missing email address',
+            error: 'Must have either valid email or valid phone number',
             data: { name, contactNumber, email }
           });
           continue;
@@ -329,8 +321,8 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
         // Build student data
         const studentData: Partial<IStudent> = {
           studentName: String(name).trim(),
-          email: String(email).trim().toLowerCase(),
-          phone: cleanedPhone,
+          email: cleanedEmail || undefined,
+          phone: cleanedPhone || undefined,
           isActive: isActive,
           batch: matchedBatch ? matchedBatch.batchName : 'Not Assigned',
           batchId: matchedBatch ? matchedBatch._id : undefined
@@ -512,11 +504,19 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
 router.post('/', asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const studentData = req.body;
   
-  // Basic validation
-  if (!studentData.studentName || !studentData.email) {
+  // Basic validation - must have name and at least email OR phone
+  if (!studentData.studentName) {
     return res.status(400).json({
       success: false,
-      error: 'Student name and email are required',
+      error: 'Student name is required',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  if (!studentData.email && !studentData.phone) {
+    return res.status(400).json({
+      success: false,
+      error: 'At least one contact method (email or phone) is required',
       timestamp: new Date().toISOString()
     });
   }

@@ -55,8 +55,8 @@ const StudentsTable = ({
         bValue = b.studentName.toLowerCase();
         break;
       case 'email':
-        aValue = a.email.toLowerCase();
-        bValue = b.email.toLowerCase();
+        aValue = a.email?.toLowerCase() || '';
+        bValue = b.email?.toLowerCase() || '';
         break;
       case 'createdAt':
         aValue = new Date(a.createdAt).getTime();
@@ -281,14 +281,22 @@ const StudentsTable = ({
 
                 {/* Student Details */}
                 <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-text-secondary">Email:</span>
-                    <span className="text-text-primary font-medium truncate ml-2">{student.email}</span>
-                  </div>
+                  {student.email && (
+                    <div className="flex justify-between">
+                      <span className="text-text-secondary">Email:</span>
+                      <span className="text-text-primary font-medium truncate ml-2">{student.email}</span>
+                    </div>
+                  )}
                   {student.phone && (
                     <div className="flex justify-between">
                       <span className="text-text-secondary">Phone:</span>
                       <span className="text-text-primary font-medium">{student.phone}</span>
+                    </div>
+                  )}
+                  {!student.email && !student.phone && (
+                    <div className="flex justify-between">
+                      <span className="text-text-secondary">Contact:</span>
+                      <span className="text-text-tertiary italic">No contact info</span>
                     </div>
                   )}
                   <div className="flex justify-between">

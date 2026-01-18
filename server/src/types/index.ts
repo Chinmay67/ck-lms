@@ -1,7 +1,8 @@
 import { Document, Types } from 'mongoose';
 
 export interface IUser extends Document {
-  email: string;
+  email?: string; // Optional - can use phone instead
+  phone?: string; // Optional - can use email instead
   password: string;
   name: string;
   role: 'user' | 'admin' | 'superadmin';
@@ -12,11 +13,13 @@ export interface IUser extends Document {
 }
 
 export interface IStudent extends Document {
+  studentCode: string; // Unique system-generated identifier (e.g., STU-20260118-00001)
+  userId?: Types.ObjectId; // Reference to User (guardian account) - can be shared by siblings
   studentName: string;
   dob?: string;
   parentName?: string;
-  email: string;
-  phone: string;
+  email?: string; // Optional - at least one of email/phone required
+  phone?: string; // Optional - at least one of email/phone required
   alternatePhone?: string;
   alternateEmail?: string;
   address?: string;

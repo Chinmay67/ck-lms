@@ -13,27 +13,60 @@ export class DatabaseService {
     session.startTransaction();
 
     try {
-      // Create the student
-      const student = new Student(studentData);
-      await student.save({ session });
+      // Validate: Must have email OR phone
+      if (!studentData.email && !studentData.phone) {
+        throw new Error('Student must have either email or phone number');
+      }
 
-      // Auto-create User account for the student
-      // User email = Student email
-      // User name = Student email
-      // User password = Student phone
-      const existingUser = await User.findOne({ email: studentData.email }).session(session);
+      // Find or create User account for the student
+      // Search by email first, then by phone
+      let existingUser = null;
+      
+      if (studentData.email) {
+        existingUser = await User.findOne({ email: studentData.email }).session(session);
+      }
+      
+      // If not found by email, try phone
+      if (!existingUser && studentData.phone) {
+        existingUser = await User.findOne({ phone: studentData.phone }).session(session);
+      }
+      
+      let userId = existingUser?._id;
       
       if (!existingUser) {
-        const userData = {
-          email: studentData.email,
-          name: studentData.email,
-          password: studentData.phone,
+        // Create new user account
+        // User identifier: email (if available) OR phone
+        // Password: phone (if available) OR default
+        const password = studentData.phone || 'Student@123';
+        
+        const userData: any = {
+          name: studentData.email || studentData.phone || 'Unknown',
+          password: password,
           role: 'user' as const,
           isActive: true
         };
+        
+        // Set email if available
+        if (studentData.email) {
+          userData.email = studentData.email;
+        }
+        
+        // Set phone if available
+        if (studentData.phone) {
+          userData.phone = studentData.phone;
+        }
+        
         const user = new User(userData);
         await user.save({ session });
+        userId = user._id;
       }
+
+      // Create the student with userId reference
+      const student = new Student({
+        ...studentData,
+        userId: userId
+      });
+      await student.save({ session });
 
       // Note: Fee records are created in the route handler using createInitialOverdueFeesForStudent()
       // which properly handles overdue fees from enrollment to current month + one pending month
@@ -43,7 +76,11 @@ export class DatabaseService {
     } catch (error: any) {
       await session.abortTransaction();
       if (error.code === 11000) {
-        throw new Error(`Student with email ${studentData.email} already exists`);
+        // Check which field caused the duplicate
+        if (error.message.includes('studentCode')) {
+          throw new Error('Student code already exists - please try again');
+        }
+        throw new Error(`Duplicate key error: ${error.message}`);
       }
       throw new Error(`Failed to create student: ${error.message}`);
     } finally {

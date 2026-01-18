@@ -402,6 +402,8 @@ export class CreditAPI {
     paymentMethod?: string;
     transactionId?: string;
     remarks?: string;
+    dueDate?: string;
+    paidDate?: string;
   }): Promise<ApiResponse> {
     const response = await api.post('/credits/add', data);
     return response.data;

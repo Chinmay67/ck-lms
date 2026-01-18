@@ -31,7 +31,7 @@ const ExportButton = ({ students, filename = 'students-export' }: ExportButtonPr
     // CSV Rows
     const rows = students.map((student) => [
       student.studentName,
-      student.email,
+      student.email || '',
       student.phone || '',
       student.dob || '',
       student.parentName || '',

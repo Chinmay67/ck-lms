@@ -17,8 +17,11 @@ interface AddCreditModalProps {
 const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalProps) => {
   const [loading, setLoading] = useState(false);
   const [course, setCourse] = useState<Course | null>(null);
-  const [numMonths, setNumMonths] = useState(1);
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [credits, setCredits] = useState<Array<{
+    dueDate: string;
+    paidDate: string;
+    amount: number;
+  }>>([{ dueDate: '', paidDate: new Date().toISOString().split('T')[0], amount: 0 }]);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'online' | 'card' | 'upi' | 'other'>('cash');
   const [transactionId, setTransactionId] = useState('');
   const [remarks, setRemarks] = useState('');
@@ -27,8 +30,8 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
     if (isOpen && student) {
       fetchFeeConfig();
       // Reset form
-      setNumMonths(1);
-      setPaymentDate(new Date().toISOString().split('T')[0]);
+      const feeAmt = getFeeAmount();
+      setCredits([{ dueDate: '', paidDate: new Date().toISOString().split('T')[0], amount: feeAmt }]);
       setPaymentMethod('cash');
       setTransactionId('');
       setRemarks('');
@@ -58,7 +61,24 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
   };
 
   const getTotalAmount = (): number => {
-    return getFeeAmount() * numMonths;
+    return credits.reduce((sum, credit) => sum + (credit.amount || 0), 0);
+  };
+
+  const addCreditRow = () => {
+    const feeAmt = getFeeAmount();
+    setCredits([...credits, { dueDate: '', paidDate: new Date().toISOString().split('T')[0], amount: feeAmt }]);
+  };
+
+  const removeCreditRow = (index: number) => {
+    if (credits.length > 1) {
+      setCredits(credits.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateCreditRow = (index: number, field: 'dueDate' | 'paidDate' | 'amount', value: string | number) => {
+    const updated = [...credits];
+    updated[index] = { ...updated[index], [field]: value };
+    setCredits(updated);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -79,22 +99,29 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
 
     setLoading(true);
     try {
-      const response = await CreditAPI.createCredit({
-        studentId,
-        amount,
-        description: `Advance payment for ${numMonths} month(s) - stored as credit until batch is assigned`,
-        paymentMethod,
-        transactionId: transactionId || undefined,
-        remarks: remarks || undefined,
-      });
+      // Create multiple credits
+      for (const credit of credits) {
+        if (!credit.paidDate) {
+          toast.error('Paid date is required for all credits');
+          setLoading(false);
+          return;
+        }
 
-      if (response.success) {
-        toast.success(`Credit of ₹${amount.toLocaleString()} added successfully!`);
-        onSuccess();
-        onClose();
-      } else {
-        throw new Error(response.error || 'Failed to add credit');
+        await CreditAPI.createCredit({
+          studentId,
+          amount: credit.amount,
+          description: `Payment${credit.dueDate ? ` for ${credit.dueDate}` : ''} - stored as credit until batch is assigned`,
+          paymentMethod,
+          transactionId: transactionId || undefined,
+          remarks: remarks || undefined,
+          dueDate: credit.dueDate || undefined,
+          paidDate: credit.paidDate,
+        });
       }
+
+      toast.success(`${credits.length} credit${credits.length > 1 ? 's' : ''} of ₹${amount.toLocaleString()} added successfully!`);
+      onSuccess();
+      onClose();
     } catch (error: any) {
       console.error('Error adding credit:', error);
       toast.error(error.response?.data?.error || error.message || 'Failed to add credit');
@@ -151,20 +178,74 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
           </div>
         </div>
 
-        {/* Number of Months */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Number of Months
-          </label>
-          <select
-            value={numMonths}
-            onChange={(e) => setNumMonths(parseInt(e.target.value))}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-          >
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => (
-              <option key={n} value={n}>{n} month{n > 1 ? 's' : ''}</option>
-            ))}
-          </select>
+        {/* Credit Entries */}
+        <div className="space-y-3">
+          <div className="flex justify-between items-center">
+            <label className="block text-sm font-medium text-gray-700">
+              Credit Entries
+            </label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addCreditRow}
+            >
+              + Add Entry
+            </Button>
+          </div>
+
+          {credits.map((credit, index) => (
+            <div key={index} className="p-3 border border-gray-200 rounded-lg space-y-2">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-medium text-gray-500">Entry {index + 1}</span>
+                {credits.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeCreditRow(index)}
+                    className="text-red-500 hover:text-red-700 text-xs"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Due Date (Optional)</label>
+                  <input
+                    type="date"
+                    value={credit.dueDate}
+                    onChange={(e) => updateCreditRow(index, 'dueDate', e.target.value)}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Paid Date *</label>
+                  <input
+                    type="date"
+                    value={credit.paidDate}
+                    onChange={(e) => updateCreditRow(index, 'paidDate', e.target.value)}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Amount *</label>
+                  <input
+                    type="number"
+                    value={credit.amount}
+                    onChange={(e) => updateCreditRow(index, 'amount', parseFloat(e.target.value) || 0)}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    min="0"
+                    step="1"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* Total Amount Display */}
@@ -174,25 +255,12 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
             <span className="text-2xl font-bold text-primary-700">₹{totalAmount.toLocaleString()}</span>
           </div>
           <p className="text-xs text-primary-600 mt-1">
-            {numMonths} month{numMonths > 1 ? 's' : ''} × ₹{feeAmount.toLocaleString()} = ₹{totalAmount.toLocaleString()}
+            {credits.length} entr{credits.length > 1 ? 'ies' : 'y'} totaling ₹{totalAmount.toLocaleString()}
           </p>
         </div>
 
         {/* Payment Details */}
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Payment Date
-            </label>
-            <input
-              type="date"
-              value={paymentDate}
-              onChange={(e) => setPaymentDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-              required
-            />
-          </div>
-
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Payment Method

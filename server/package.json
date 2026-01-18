@@ -6,7 +6,10 @@
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "ingest": "tsx scripts/IngestStudentsFromExcel.ts",
+    "migrate:shared-contacts": "tsx scripts/MigrateToSharedContacts.ts",
+    "create-superadmin": "tsx scripts/CreateSuperAdmin.ts"
   },
   "dependencies": {
     "@microsoft/microsoft-graph-client": "^3.0.7",

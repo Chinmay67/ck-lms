@@ -165,6 +165,12 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Validate: Must have at least email OR phone
+    if (!formData.email && !formData.phone) {
+      alert('Please provide at least one contact method (email or phone)');
+      return;
+    }
+    
     // If stage/level changed in edit mode, show confirmation dialog
     if (hasStageLevelChanged()) {
       setPendingFormData(formData);
@@ -241,14 +247,14 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
         {/* Contact Information */}
         <div>
           <h4 className="text-base md:text-lg font-semibold text-text-primary mb-3 md:mb-4 pb-2 border-b border-primary-100">Contact Information</h4>
+          <p className="text-sm text-text-secondary mb-3">At least one contact method (email or phone) is required</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
             <Input
-              label="Email *"
+              label="Email"
               name="email"
               type="email"
               value={formData.email}
               onChange={handleChange}
-              required
               placeholder="student@example.com"
             />
 

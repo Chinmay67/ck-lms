@@ -82,14 +82,21 @@ const StudentRow = ({ student, isSelected, onSelect, onEdit, onFees, onToggleAct
       {/* Contact */}
       <td className="px-4 py-3 w-56 min-w-[180px] max-w-[240px]">
         <div className="space-y-1">
-          <div className="flex items-center text-xs text-text-primary truncate" title={student.email}>
-            <FaEnvelope className="mr-1.5 text-text-tertiary flex-shrink-0" size={11} />
-            <span className="truncate">{student.email}</span>
-          </div>
+          {student.email && (
+            <div className="flex items-center text-xs text-text-primary truncate" title={student.email}>
+              <FaEnvelope className="mr-1.5 text-text-tertiary flex-shrink-0" size={11} />
+              <span className="truncate">{student.email}</span>
+            </div>
+          )}
           {student.phone && (
             <div className="flex items-center text-xs text-text-secondary truncate" title={student.phone}>
               <FaPhone className="mr-1.5 text-text-tertiary flex-shrink-0" size={11} />
               <span className="truncate">{student.phone}</span>
+            </div>
+          )}
+          {!student.email && !student.phone && (
+            <div className="text-xs text-text-tertiary italic">
+              No contact info
             </div>
           )}
         </div>

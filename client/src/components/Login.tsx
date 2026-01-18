@@ -186,13 +186,6 @@ export function Login({ onLoginSuccess }: LoginProps) {
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
-
-          <div className="text-center text-sm text-text-secondary bg-primary-50 rounded-xl p-4 border border-primary-100">
-            <p className="font-medium text-text-primary mb-1">Default credentials:</p>
-            <p className="font-mono text-xs text-primary-600">
-              admin@chessklub.com / Admin@123
-            </p>
-          </div>
         </Card>
 
         <p className="text-center text-primary-200 text-sm mt-6">

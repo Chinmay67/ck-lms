@@ -30,7 +30,6 @@ const BatchSchema = new Schema<IBatch>({
   batchName: {
     type: String,
     required: [true, 'Batch name is required'],
-    unique: true,
     trim: true,
     maxlength: [100, 'Batch name cannot exceed 100 characters']
   },
@@ -119,7 +118,8 @@ const BatchSchema = new Schema<IBatch>({
 });
 
 // Indexes for better query performance
-BatchSchema.index({ batchName: 1 }, { unique: true });
+// Note: batchName is NOT unique - multiple batches can have same name with different codes
+BatchSchema.index({ batchName: 1 });
 BatchSchema.index({ batchCode: 1 }, { unique: true });
 BatchSchema.index({ stage: 1, level: 1 });
 BatchSchema.index({ status: 1 });

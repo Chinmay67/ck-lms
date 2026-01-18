@@ -2,6 +2,18 @@ import mongoose, { Schema } from 'mongoose';
 import { IStudent } from '../types/index.js';
 
 const StudentSchema = new Schema<IStudent>({
+  studentCode: {
+    type: String,
+    unique: true,
+    trim: true,
+    uppercase: true
+    // Will be auto-generated if not provided
+  },
+  userId: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    required: false // Not all students may have user accounts initially
+  },
   studentName: {
     type: String,
     required: [true, 'Student name is required'],
@@ -20,17 +32,18 @@ const StudentSchema = new Schema<IStudent>({
   },
   email: {
     type: String,
-    required: [true, 'Email is required'],
     lowercase: true,
     trim: true,
-    match: [
-      /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
-      'Please provide a valid email address'
-    ]
+    validate: {
+      validator: function(v: string) {
+        if (!v) return true; // Allow empty, will be validated by contactValidation
+        return /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(v);
+      },
+      message: 'Please provide a valid email address'
+    }
   },
   phone: {
     type: String,
-    required: [true, 'Phone number is required'],
     trim: true,
     maxlength: [20, 'Phone number cannot exceed 20 characters']
   },
@@ -138,8 +151,46 @@ const StudentSchema = new Schema<IStudent>({
   versionKey: false
 });
 
+// Custom validation to ensure at least email or phone is provided
+StudentSchema.path('email').validate(function(this: IStudent) {
+  return this.email || this.phone;
+}, 'At least one contact method (email or phone) is required');
+
+StudentSchema.path('phone').validate(function(this: IStudent) {
+  return this.email || this.phone;
+}, 'At least one contact method (email or phone) is required');
+
+// Auto-generate studentCode before saving if not provided
+StudentSchema.pre('save', async function(next) {
+  if (!this.studentCode) {
+    // Generate studentCode: STU-YYYYMMDD-XXXXX (e.g., STU-20260118-00001)
+    const date = new Date();
+    const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
+    
+    // Find the last student code created today
+    const lastStudent = await mongoose.model('Student')
+      .findOne({ studentCode: new RegExp(`^STU-${dateStr}-`) })
+      .sort({ studentCode: -1 })
+      .select('studentCode');
+    
+    let sequence = 1;
+    if (lastStudent && lastStudent.studentCode) {
+      const lastSequence = parseInt(lastStudent.studentCode.split('-')[2]);
+      if (!isNaN(lastSequence)) {
+        sequence = lastSequence + 1;
+      }
+    }
+    
+    this.studentCode = `STU-${dateStr}-${sequence.toString().padStart(5, '0')}`;
+  }
+  next();
+});
+
 // Indexes for better query performance
-StudentSchema.index({ email: 1 }, { unique: true });
+StudentSchema.index({ studentCode: 1 }, { unique: true }); // Unique student identifier
+StudentSchema.index({ userId: 1 }); // Link to User/Guardian account
+StudentSchema.index({ email: 1 }); // Allow duplicates for siblings
+StudentSchema.index({ phone: 1 }); // Allow duplicates for siblings
 StudentSchema.index({ studentName: 1 });
 StudentSchema.index({ createdAt: -1 });
 StudentSchema.index({ emailId: 1 });

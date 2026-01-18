@@ -36,7 +36,10 @@ export const config = {
     
     // Email Sync Configuration
     emailSyncInterval: parseInt(process.env.EMAIL_SYNC_INTERVAL || '300000', 10), // 5 minutes default
-    senderEmail: process.env.SENDER_EMAIL || 'rrnagar@chessklub.net'
+    senderEmail: process.env.SENDER_EMAIL || 'rrnagar@chessklub.net',
+    
+    // Admin Configuration
+    maxSuperAdmins: parseInt(process.env.MAX_SUPER_ADMINS || '3', 10) // Default: allow 3 superadmins
 } as const;
 
 export type Config = typeof config;

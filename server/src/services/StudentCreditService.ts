@@ -27,8 +27,10 @@ export class StudentCreditService {
     transactionId?: string;
     processedBy: string | mongoose.Types.ObjectId;
     remarks?: string;
+    dueDate?: Date;
+    paidDate?: Date;
   }): Promise<IStudentCredit> {
-    const { studentId, studentName, amount, description, paymentMethod, transactionId, processedBy, remarks } = params;
+    const { studentId, studentName, amount, description, paymentMethod, transactionId, processedBy, remarks, dueDate, paidDate } = params;
 
     if (amount <= 0) {
       throw new Error('Credit amount must be positive');
@@ -48,8 +50,10 @@ export class StudentCreditService {
       paymentMethod,
       transactionId,
       processedBy,
-      processedAt: new Date(),
-      remarks
+      processedAt: paidDate || new Date(),
+      remarks,
+      dueDate,
+      paidDate
     });
 
     await creditTransaction.save();

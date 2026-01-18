@@ -12,6 +12,8 @@ export interface IStudentCredit extends Document {
   transactionId?: string;
   feeRecordId?: mongoose.Types.ObjectId;
   feeMonth?: string;
+  dueDate?: Date;
+  paidDate?: Date;
   processedBy: mongoose.Types.ObjectId;
   processedAt: Date;
   remarks?: string;
@@ -69,6 +71,12 @@ const StudentCreditSchema = new Schema<IStudentCredit>(
     },
     feeMonth: {
       type: String
+    },
+    dueDate: {
+      type: Date
+    },
+    paidDate: {
+      type: Date
     },
     processedBy: {
       type: Schema.Types.ObjectId,

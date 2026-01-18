@@ -5,14 +5,19 @@ import { IUser } from '../types/index.js';
 const UserSchema = new Schema<IUser>({
   email: {
     type: String,
-    required: [true, 'Email is required'],
-    unique: true,
     lowercase: true,
     trim: true,
     match: [
       /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
       'Please provide a valid email address'
-    ]
+    ],
+    sparse: true // Allow null values but maintain uniqueness when present
+  },
+  phone: {
+    type: String,
+    trim: true,
+    maxlength: [20, 'Phone number cannot exceed 20 characters'],
+    sparse: true // Allow null values but maintain uniqueness when present
   },
   password: {
     type: String,
@@ -43,8 +48,30 @@ const UserSchema = new Schema<IUser>({
   versionKey: false
 });
 
+// Validation: Must have either email or phone
+UserSchema.pre('save', function(next) {
+  if (!this.email && !this.phone) {
+    return next(new Error('User must have either email or phone'));
+  }
+  next();
+});
+
 // Index for better query performance
-UserSchema.index({ email: 1 });
+// Use partialFilterExpression to only enforce uniqueness when field exists and is not null
+UserSchema.index(
+  { email: 1 }, 
+  { 
+    unique: true,
+    partialFilterExpression: { email: { $exists: true, $type: 'string' } }
+  }
+);
+UserSchema.index(
+  { phone: 1 }, 
+  { 
+    unique: true,
+    partialFilterExpression: { phone: { $exists: true, $type: 'string' } }
+  }
+);
 
 // Hash password before saving
 UserSchema.pre('save', async function(next) {
