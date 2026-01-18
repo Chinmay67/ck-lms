@@ -14,7 +14,7 @@ declare global {
 
 interface JwtPayload {
   userId: string;
-  email: string;
+  email: string | undefined;
   role: string;
 }
 
@@ -89,7 +89,7 @@ export const authorize = (...roles: string[]) => {
 export const generateToken = (user: IUser): string => {
   const payload: JwtPayload = {
     userId: (user._id as any).toString(),
-    email: user.email,
+    email: user.email ,
     role: user.role
   };
 
