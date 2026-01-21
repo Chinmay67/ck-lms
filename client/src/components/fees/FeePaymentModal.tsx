@@ -6,6 +6,7 @@ import type { Course } from '../../types/course';
 import { FeesAPI, CourseAPI, CreditAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import { showErrorToast } from '../../utils/errorHandler';
+import { formatFeeMonth } from '../../utils/dateFormatter';
 
 interface FeePaymentModalProps {
   isOpen: boolean;
@@ -195,7 +196,7 @@ const FeePaymentModal = ({ isOpen, onClose, student, onSuccess, editingFee }: Fe
         });
 
         if (response.success) {
-          const monthNames = months.map(m => m.feeMonth).join(', ');
+          const monthNames = months.map(m => formatFeeMonth(m.feeMonth)).join(', ');
           toast.success(`Payment recorded successfully for ${monthNames}`);
           onSuccess();
           handleClose();
@@ -430,7 +431,7 @@ const FeePaymentModal = ({ isOpen, onClose, student, onSuccess, editingFee }: Fe
             <div className="space-y-2 max-h-40 overflow-y-auto">
               {months.map((month, index) => (
                 <div key={index} className="flex justify-between items-center bg-primary-50 px-3 py-2 rounded-lg border border-primary-100">
-                  <span className="text-xs md:text-sm text-text-primary font-medium">{month.feeMonth}</span>
+                  <span className="text-xs md:text-sm text-text-primary font-medium">{formatFeeMonth(month.feeMonth)}</span>
                   <span className="text-xs md:text-sm font-semibold text-primary-600">
                     INR {course && course.levels.length > 0 ? course.levels[0].feeAmount.toLocaleString() : 0}
                   </span>
