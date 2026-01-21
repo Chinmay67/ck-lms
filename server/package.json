@@ -9,7 +9,9 @@
     "type-check": "tsc --noEmit",
     "ingest": "tsx scripts/IngestStudentsFromExcel.ts",
     "migrate:shared-contacts": "tsx scripts/MigrateToSharedContacts.ts",
-    "create-superadmin": "tsx scripts/CreateSuperAdmin.ts"
+    "create-superadmin": "tsx scripts/CreateSuperAdmin.ts",
+    "generate-fees": "tsx scripts/GenerateMissingFeeRecords.ts",
+    "generate-fees:dry-run": "tsx scripts/GenerateMissingFeeRecords.ts --dry-run"
   },
   "dependencies": {
     "@microsoft/microsoft-graph-client": "^3.0.7",

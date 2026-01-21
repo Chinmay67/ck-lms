@@ -120,9 +120,9 @@ const StudentRow = ({ student, isSelected, onSelect, onEdit, onFees, onToggleAct
 
       {/* Joined Date */}
       <td className="px-4 py-3 w-36 min-w-[120px]">
-        <div className="flex items-center text-xs text-text-secondary whitespace-nowrap" title={formatDate(student.createdAt)}>
+        <div className="flex items-center text-xs text-text-secondary whitespace-nowrap" title={formatDate(student.enrollmentDate)}>
           <FaCalendar className="mr-1.5 text-text-tertiary flex-shrink-0" size={11} />
-          <span className="truncate">{formatDate(student.createdAt)}</span>
+          <span className="truncate">{formatDate(student.enrollmentDate)}</span>
         </div>
       </td>
 
