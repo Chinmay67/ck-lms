@@ -5,6 +5,7 @@ import { FeesAPI, CourseAPI, CreditAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import FeePaymentModal from './FeePaymentModal';
 import AddCreditModal from './AddCreditModal';
+import { formatFeeMonth } from '../../utils/dateFormatter';
 
 interface StudentFeesTabProps {
   student: Student;
@@ -287,7 +288,7 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
             {overdueFees.map((fee, index) => (
               <div key={fee._id || `overdue-${index}`} className="flex justify-between items-center bg-red-50 px-4 py-3 rounded-lg border-l-4 border-red-500">
                 <div>
-                  <p className="font-medium text-gray-900">{fee.feeMonth}</p>
+                  <p className="font-medium text-gray-900">{formatFeeMonth(fee.feeMonth)}</p>
                   <p className="text-sm text-red-600">Overdue: {formatDate(fee.dueDate)}</p>
                   {fee.status === 'partially_paid' && (
                     <p className="text-xs text-orange-600">Partially Paid - {formatCurrency(fee.paidAmount)} paid</p>
@@ -309,7 +310,7 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
           <div className="space-y-2">
             <div className="flex justify-between items-center bg-blue-50 px-4 py-3 rounded-lg border-l-4 border-blue-500">
               <div>
-                <p className="font-medium text-gray-900">{nextUpcomingFee.feeMonth}</p>
+                <p className="font-medium text-gray-900">{formatFeeMonth(nextUpcomingFee.feeMonth)}</p>
                 <p className="text-sm text-gray-600">Due: {formatDate(nextUpcomingFee.dueDate)}</p>
               </div>
               <span className="font-semibold text-blue-700">
@@ -417,7 +418,7 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
                 {fees.map((fee) => (
                   <tr key={fee._id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {fee.feeMonth}
+                      {formatFeeMonth(fee.feeMonth)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {formatDate(fee.dueDate)}

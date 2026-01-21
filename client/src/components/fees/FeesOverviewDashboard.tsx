@@ -4,6 +4,7 @@ import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { FaUsers, FaCheckCircle, FaClock, FaExclamationTriangle, FaHourglassHalf, FaUpload } from 'react-icons/fa';
 import { BulkFeeUploadModal } from './BulkFeeUploadModal';
+import { formatFeeMonth } from '../../utils/dateFormatter';
 
 const FeesOverviewDashboard = () => {
   const [stats, setStats] = useState<FeeStats | null>(null);
@@ -256,7 +257,7 @@ const FeesOverviewDashboard = () => {
                       <p className="text-xs md:text-sm text-text-secondary capitalize mt-0.5">
                         {payment.stage} - Level {payment.level}
                       </p>
-                      <p className="text-xs text-text-tertiary truncate mt-0.5">{payment.feeMonth}</p>
+                      <p className="text-xs text-text-tertiary truncate mt-0.5">{formatFeeMonth(payment.feeMonth)}</p>
                     </div>
                     <div className="text-right flex-shrink-0">
                       <p className="font-bold text-accent-600 text-sm md:text-base whitespace-nowrap">

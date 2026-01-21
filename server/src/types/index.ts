@@ -155,7 +155,7 @@ export interface IFeeRecord extends Document {
   studentName: string;
   stage: 'beginner' | 'intermediate' | 'advanced';
   level: 1 | 2 | 3;
-  feeMonth: string; // e.g., 'January 2024'
+  feeMonth: string; // Standardized format: 'YYYY-MM' (e.g., '2026-01')
   dueDate: Date;
   // Note: 'status' is a virtual computed field, not stored in DB
   // Computed as: paid | partially_paid | overdue | upcoming

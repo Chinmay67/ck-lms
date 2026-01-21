@@ -103,6 +103,6 @@ StudentCreditSchema.index({ studentId: 1, createdAt: -1 });
 // Index for transaction queries
 StudentCreditSchema.index({ transactionType: 1, processedAt: -1 });
 
-const StudentCredit = mongoose.model<IStudentCredit>('StudentCredit', StudentCreditSchema);
-
-export default StudentCredit;
+export default
+  mongoose.models.StudentCredit ||
+  mongoose.model('StudentCredit', StudentCreditSchema);

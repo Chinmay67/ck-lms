@@ -83,14 +83,12 @@ async function getFeeAmountForStudent(stage: string, level: number): Promise<num
 }
 
 /**
- * Generate fee month name (e.g., "January 2026")
+ * Generate fee month name in standardized YYYY-MM format (e.g., "2026-01")
  */
 function generateFeeMonthName(date: Date): string {
-  const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-  return `${months[date.getMonth()]} ${date.getFullYear()}`;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
 }
 
 /**

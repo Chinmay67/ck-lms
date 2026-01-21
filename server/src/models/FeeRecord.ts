@@ -128,37 +128,43 @@ FeeRecordSchema.virtual('status').get(function() {
   }
 });
 
-// Cascade: Unlink from StudentCredits when fee record is deleted
 FeeRecordSchema.pre('deleteOne', { document: true, query: false }, async function() {
-  const feeRecordId = this._id;
-  await mongoose.model('StudentCredit').updateMany(
-    { feeRecordId },
+  const StudentCredit = mongoose.models.StudentCredit;
+  if (!StudentCredit) return;
+
+  await StudentCredit.updateMany(
+    { feeRecordId: this._id },
     { $unset: { feeRecordId: 1 } }
   );
 });
 
-// Handle query-based deleteOne
 FeeRecordSchema.pre('deleteOne', { document: false, query: true }, async function() {
+  const StudentCredit = mongoose.models.StudentCredit;
+  if (!StudentCredit) return;
+
   const feeRecord = await this.model.findOne(this.getFilter()).select('_id');
-  if (feeRecord) {
-    await mongoose.model('StudentCredit').updateMany(
-      { feeRecordId: feeRecord._id },
-      { $unset: { feeRecordId: 1 } }
-    );
-  }
+  if (!feeRecord) return;
+
+  await StudentCredit.updateMany(
+    { feeRecordId: feeRecord._id },
+    { $unset: { feeRecordId: 1 } }
+  );
 });
 
-// Handle deleteMany
 FeeRecordSchema.pre('deleteMany', async function() {
+  const StudentCredit = mongoose.models.StudentCredit;
+  if (!StudentCredit) return;
+
   const feeRecords = await this.model.find(this.getFilter()).select('_id');
   const feeRecordIds = feeRecords.map(f => f._id);
-  if (feeRecordIds.length > 0) {
-    await mongoose.model('StudentCredit').updateMany(
-      { feeRecordId: { $in: feeRecordIds } },
-      { $unset: { feeRecordId: 1 } }
-    );
-  }
+  if (!feeRecordIds.length) return;
+
+  await StudentCredit.updateMany(
+    { feeRecordId: { $in: feeRecordIds } },
+    { $unset: { feeRecordId: 1 } }
+  );
 });
+
 
 // Ensure virtual fields are serialized
 FeeRecordSchema.set('toJSON', {

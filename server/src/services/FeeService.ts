@@ -141,16 +141,14 @@ export class FeeService {
   }
 
   /**
-   * Generate a month name from a date
+   * Generate fee month name in standardized YYYY-MM format (e.g., "2026-01")
    * @param date - The date
-   * @returns Month name like "January 2024"
+   * @returns Month name like "2026-01"
    */
   static generateFeeMonthName(date: Date): string {
-    const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    return `${months[date.getMonth()]} ${date.getFullYear()}`;
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
   }
 
   /**

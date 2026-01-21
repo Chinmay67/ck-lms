@@ -11,7 +11,9 @@
     "migrate:shared-contacts": "tsx scripts/MigrateToSharedContacts.ts",
     "create-superadmin": "tsx scripts/CreateSuperAdmin.ts",
     "generate-fees": "tsx scripts/GenerateMissingFeeRecords.ts",
-    "generate-fees:dry-run": "tsx scripts/GenerateMissingFeeRecords.ts --dry-run"
+    "generate-fees:dry-run": "tsx scripts/GenerateMissingFeeRecords.ts --dry-run",
+    "cleanup-fees": "tsx scripts/CleanupExcessFeeRecords.ts",
+    "cleanup-fees:dry-run": "tsx scripts/CleanupExcessFeeRecords.ts --dry-run"
   },
   "dependencies": {
     "@microsoft/microsoft-graph-client": "^3.0.7",
