@@ -273,6 +273,73 @@ export class StudentCreditService {
 
     return summaryMap;
   }
+
+  /**
+   * Apply available credits to unpaid/partially-paid fee records
+   * Marks fee records as paid and creates credit_used transactions
+   */
+  static async applyCreditsToFeeRecords(params: {
+    studentId: string | mongoose.Types.ObjectId;
+    studentName: string;
+    processedBy: string | mongoose.Types.ObjectId;
+    session?: mongoose.ClientSession;
+  }): Promise<{ feesCount: number; amountUsed: number; remainingCredit: number }> {
+    const { studentId, studentName, processedBy, session } = params;
+
+    const availableCredit = await this.getCreditBalance(studentId);
+
+    if (availableCredit <= 0) {
+      return { feesCount: 0, amountUsed: 0, remainingCredit: 0 };
+    }
+
+    // Import FeeRecord model
+    const FeeRecord = (await import('../models/FeeRecord.js')).default;
+
+    // Get all unpaid/partially-paid fees in chronological order
+    const fees = await FeeRecord.find({
+      studentId,
+      $expr: { $lt: ['$paidAmount', '$feeAmount'] } // paidAmount < feeAmount
+    })
+    .sort({ dueDate: 1 }) // Oldest first
+    .session(session || null);
+
+    let remainingCredit = availableCredit;
+    let totalUsed = 0;
+    let feesCount = 0;
+
+    for (const fee of fees) {
+      if (remainingCredit <= 0) break;
+
+      const amountNeeded = fee.feeAmount - fee.paidAmount;
+      const amountToApply = Math.min(amountNeeded, remainingCredit);
+
+      // Update fee record
+      fee.paidAmount += amountToApply;
+      fee.paymentDate = fee.paymentDate || new Date();
+      fee.paymentMethod = fee.paymentMethod || 'online';
+      fee.transactionId = fee.transactionId || `CREDIT-${Date.now()}-${fee.feeMonth}`;
+      fee.updatedBy = processedBy as any;
+      await fee.save({ session: session || null });
+
+      // Create credit_used transaction
+      await this.useCredit({
+        studentId,
+        studentName,
+        amount: amountToApply,
+        description: `Applied credit to ${fee.feeMonth} fee`,
+        feeRecordId: fee._id,
+        feeMonth: fee.feeMonth,
+        processedBy,
+        remarks: `Auto-applied on course/level change`
+      });
+
+      remainingCredit -= amountToApply;
+      totalUsed += amountToApply;
+      feesCount++;
+    }
+
+    return { feesCount, amountUsed: totalUsed, remainingCredit };
+  }
 }
 
 export default StudentCreditService;

@@ -26,6 +26,11 @@ export interface Student {
   updatedAt: string;
 }
 
+// Extended type for student updates that includes transient fields
+export type StudentUpdate = Partial<Student> & {
+  changeType?: 'progression' | 'correction';
+};
+
 export interface ApiResponse<T = any> {
   success: boolean;
   data?: T;

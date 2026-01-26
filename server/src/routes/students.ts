@@ -580,7 +580,8 @@ router.post('/', asyncHandler(async (req: Request, res: Response<ApiResponse>) =
 router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<IStudent>>) => {
   const { id } = req.params;
   const updateData = req.body;
-  
+  const changeType = req.body.changeType as 'progression' | 'correction' | undefined;
+
   if (!id) {
     return res.status(400).json({
       success: false,
@@ -588,13 +589,14 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Remove fields that shouldn't be updated directly
   delete updateData.id;
   delete updateData._id;
   delete updateData.createdAt;
   delete updateData.updatedAt;
-  
+  delete updateData.changeType; // Remove from updateData as it's not a student field
+
   // Get the existing student to check for stage/level changes
   const existingStudent = await DatabaseService.getStudentById(id);
   if (!existingStudent) {
@@ -604,12 +606,12 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Check if stage or level has changed
   const stageChanged = updateData.stage && updateData.stage !== existingStudent.stage;
   const levelChanged = updateData.level && updateData.level !== existingStudent.level;
   const stageLevelChanged = stageChanged || levelChanged;
-  
+
   // If stage/level changed, validate that a compatible batch is provided
   if (stageLevelChanged) {
     if (!updateData.batchId) {
@@ -619,11 +621,28 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
         timestamp: new Date().toISOString()
       });
     }
-    
+
+    // Require changeType when stage/level changes
+    if (!changeType) {
+      return res.status(400).json({
+        success: false,
+        error: 'changeType is required when changing stage/level. Must be either "progression" (student upgrade) or "correction" (fixing wrong data).',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    if (changeType !== 'progression' && changeType !== 'correction') {
+      return res.status(400).json({
+        success: false,
+        error: 'changeType must be either "progression" or "correction".',
+        timestamp: new Date().toISOString()
+      });
+    }
+
     // Import Batch model to validate batch compatibility
     const Batch = (await import('../models/Batch.js')).default;
     const batch = await Batch.findById(updateData.batchId);
-    
+
     if (!batch) {
       return res.status(400).json({
         success: false,
@@ -631,10 +650,10 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
         timestamp: new Date().toISOString()
       });
     }
-    
+
     const newStage = updateData.stage || existingStudent.stage;
     const newLevel = updateData.level || existingStudent.level;
-    
+
     if (batch.stage !== newStage || batch.level !== newLevel) {
       return res.status(400).json({
         success: false,
@@ -642,25 +661,33 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
         timestamp: new Date().toISOString()
       });
     }
-    
-    // Handle fee transition - delete old unpaid upcoming fees, generate new ones
+
+    // Handle fee transition based on changeType
     try {
+      const userId = (req as any).user.id;
+
       const transitionResult = await FeeService.handleStageLevelTransition(
         id,
         updateData.batchId,
         newStage,
-        newLevel
+        newLevel,
+        changeType,
+        userId
       );
-      
-      console.log(`Stage/level transition for student ${id}: deleted ${transitionResult.deletedFeesCount} fees, created ${transitionResult.createdFeesCount} fees`);
-      
+
+      const message = changeType === 'correction'
+        ? `Student data corrected successfully. ${transitionResult.deletedFeesCount} fees deleted, ${transitionResult.createdFeesCount} new fees generated. ₹${transitionResult.convertedCreditAmount} converted to credits, ${transitionResult.appliedFeesCount} fees paid with credits.`
+        : `Student progressed successfully. ${transitionResult.deletedFeesCount} unpaid fees deleted, ${transitionResult.createdFeesCount} new fees generated.`;
+
+      console.log(`Stage/level ${changeType} for student ${id}:`, transitionResult);
+
       // The handleStageLevelTransition already updates the student, so we can return the updated student
       const updatedStudent = await DatabaseService.getStudentById(id);
-      
+
       return res.json({
         success: true,
         data: updatedStudent!,
-        message: `Student updated successfully. ${transitionResult.deletedFeesCount} upcoming fees deleted, ${transitionResult.createdFeesCount} new fees generated.`,
+        message,
         timestamp: new Date().toISOString()
       });
     } catch (error: any) {

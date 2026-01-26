@@ -3,6 +3,7 @@ import Course from '../models/Course.js';
 import Student from '../models/Student.js';
 import Batch from '../models/Batch.js';
 import mongoose from 'mongoose';
+import { StudentCreditService } from './StudentCreditService.js';
 
 export class FeeService {
   /**
@@ -549,26 +550,31 @@ export class FeeService {
 
   /**
    * Handle stage/level transition for a student
-   * - Deletes all unpaid upcoming fees (status: upcoming, amountPaid: 0)
-   * - Determines effective date based on batch start date vs current date
-   * - Generates new fees from effective date with new stage/level fee amount
-   * - Updates student's feeCycleStartDate
+   * Supports two modes:
+   * - progression: Student naturally moves to next level (keeps paid fees, deletes unpaid)
+   * - correction: Student data was wrong (converts paid fees to credits, deletes all upcoming)
    * @param studentId - The student ID
    * @param newBatchId - The new batch ID
-   * @param newStage - The new stage
-   * @param newLevel - The new level
+   * @param newStage - The new stage (beginner, intermediate, advanced)
+   * @param newLevel - The new level (1, 2, 3)
+   * @param changeType - Type of change: 'progression' or 'correction'
+   * @param userId - ID of user making the change
    * @param session - Mongoose session for transaction support
-   * @returns Object with deleted and created fee counts
+   * @returns Object with deleted and created fee counts, converted credits
    */
   static async handleStageLevelTransition(
     studentId: string,
     newBatchId: string,
     newStage: string,
     newLevel: number,
+    changeType: 'progression' | 'correction',
+    userId: string,
     session?: mongoose.ClientSession
   ): Promise<{
     deletedFeesCount: number;
     createdFeesCount: number;
+    convertedCreditAmount: number;
+    appliedFeesCount: number;
     effectiveDate: Date;
   }> {
     try {
@@ -592,29 +598,90 @@ export class FeeService {
       const currentDate = new Date();
       currentDate.setHours(0, 0, 0, 0);
 
-      // Delete all unpaid upcoming fees
-      // Upcoming fees have dueDate >= today and paidAmount = 0
-      const deleteResult = await FeeRecord.deleteMany({
-        studentId,
-        paidAmount: 0,
-        dueDate: { $gte: currentDate }
-      }).session(session || null);
+      let deletedFeesCount = 0;
+      let convertedCreditAmount = 0;
+      let appliedFeesCount = 0;
 
-      const deletedFeesCount = deleteResult.deletedCount || 0;
-      console.log(`Deleted ${deletedFeesCount} unpaid upcoming fees for student ${studentId}`);
+      // ============================================================
+      // BRANCH: Different logic based on changeType
+      // ============================================================
 
-      // Determine effective date: max(batch start date, current date)
+      if (changeType === 'correction') {
+        // ========== CORRECTION LOGIC ==========
+        // Student was entered incorrectly, need to fix all fees
+
+        // STEP 1: Find ALL upcoming fees (including paid ones)
+        const upcomingFees = await FeeRecord.find({
+          studentId,
+          dueDate: { $gte: currentDate }
+        }).session(session || null);
+
+        // STEP 2: Convert PAID amounts to credits
+        let totalPaidAmount = 0;
+        const paidFeeDetails: string[] = [];
+
+        for (const fee of upcomingFees) {
+          if (fee.paidAmount > 0) {
+            totalPaidAmount += fee.paidAmount;
+            paidFeeDetails.push(`${fee.feeMonth} (₹${fee.paidAmount})`);
+          }
+        }
+
+        // Add credit if there was any paid amount
+        if (totalPaidAmount > 0) {
+          await StudentCreditService.makeAdjustment({
+            studentId,
+            studentName: student.studentName,
+            amount: totalPaidAmount,
+            description: `Data correction: ${student.stage} L${student.level} → ${newStage} L${newLevel}`,
+            processedBy: userId,
+            remarks: `Converted paid fees: ${paidFeeDetails.join(', ')}`
+          });
+          convertedCreditAmount = totalPaidAmount;
+          console.log(`[CORRECTION] Converted ₹${totalPaidAmount} from ${paidFeeDetails.length} paid fees to credits`);
+        }
+
+        // STEP 3: Delete ALL upcoming fees
+        const deleteResult = await FeeRecord.deleteMany({
+          studentId,
+          dueDate: { $gte: currentDate }
+        }).session(session || null);
+
+        deletedFeesCount = deleteResult.deletedCount || 0;
+        console.log(`[CORRECTION] Deleted ${deletedFeesCount} upcoming fees (paid + unpaid)`);
+
+      } else {
+        // ========== PROGRESSION LOGIC ==========
+        // Normal upgrade - only delete unpaid fees, keep paid fees
+
+        // STEP 1: Delete only UNPAID upcoming fees
+        const deleteResult = await FeeRecord.deleteMany({
+          studentId,
+          paidAmount: 0,
+          dueDate: { $gte: currentDate }
+        }).session(session || null);
+
+        deletedFeesCount = deleteResult.deletedCount || 0;
+        console.log(`[PROGRESSION] Deleted ${deletedFeesCount} unpaid upcoming fees`);
+
+        // No credit conversion needed for progression
+      }
+
+      // ============================================================
+      // COMMON STEPS (both progression and correction)
+      // ============================================================
+
+      // STEP 4: Determine effective date
       const batchStartDate = new Date(batch.startDate);
       batchStartDate.setHours(0, 0, 0, 0);
-      
+
       const effectiveDate = batchStartDate > currentDate ? batchStartDate : currentDate;
-      
-      // Set to first of the month for fee generation
+
       const feeStartDate = new Date(effectiveDate);
       feeStartDate.setDate(1);
       feeStartDate.setHours(0, 0, 0, 0);
 
-      // Update student's feeCycleStartDate to the effective date
+      // STEP 5: Update student record
       student.feeCycleStartDate = effectiveDate;
       student.stage = newStage;
       student.level = newLevel;
@@ -622,7 +689,7 @@ export class FeeService {
       student.batch = batch.batchName;
       await student.save({ session: session || null });
 
-      // Generate new fees from effective date using the new stage
+      // STEP 6: Generate new fees at new course/level rate
       const createdFees = await this.createInitialOverdueFeesForStudent(
         studentId,
         feeStartDate,
@@ -630,16 +697,51 @@ export class FeeService {
         session
       );
 
-      console.log(`Created ${createdFees.length} new fees for student ${studentId} after stage/level transition`);
+      console.log(`Created ${createdFees.length} new fees at ${newStage} L${newLevel}`);
+
+      // STEP 7: Prorate current month if mid-month change
+      if (effectiveDate.getDate() > 1) {
+        const currentMonth = `${effectiveDate.getFullYear()}-${String(effectiveDate.getMonth() + 1).padStart(2, '0')}`;
+        const currentMonthFee = await FeeRecord.findOne({
+          studentId,
+          feeMonth: currentMonth
+        }).session(session || null);
+
+        if (currentMonthFee) {
+          const daysInMonth = new Date(effectiveDate.getFullYear(), effectiveDate.getMonth() + 1, 0).getDate();
+          const enrollmentDay = student.enrollmentDate.getDate();
+          const effectiveDay = Math.max(effectiveDate.getDate(), enrollmentDay);
+          const daysRemaining = daysInMonth - effectiveDay + 1;
+          const proratedAmount = Math.round((currentMonthFee.feeAmount / daysInMonth) * daysRemaining);
+
+          currentMonthFee.feeAmount = proratedAmount;
+          await currentMonthFee.save({ session: session || null });
+          console.log(`Prorated current month to ₹${proratedAmount} (${daysRemaining}/${daysInMonth} days)`);
+        }
+      }
+
+      // STEP 8: Auto-apply credits if correction
+      if (changeType === 'correction' && convertedCreditAmount > 0) {
+        const result = await StudentCreditService.applyCreditsToFeeRecords({
+          studentId,
+          studentName: student.studentName,
+          processedBy: userId,
+          session
+        });
+        appliedFeesCount = result.feesCount;
+        console.log(`Auto-applied ₹${result.amountUsed} credits to ${result.feesCount} fees, ₹${result.remainingCredit} remaining`);
+      }
 
       return {
         deletedFeesCount,
         createdFeesCount: createdFees.length,
+        convertedCreditAmount,
+        appliedFeesCount,
         effectiveDate
       };
     } catch (error: any) {
-      console.error(`Failed to handle stage/level transition: ${error.message}`);
-      throw new Error(`Failed to handle stage/level transition: ${error.message}`);
+      console.error(`Failed to handle stage/level ${changeType}: ${error.message}`);
+      throw new Error(`Failed to handle stage/level ${changeType}: ${error.message}`);
     }
   }
 

@@ -2,14 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
-import { type Student } from '../../types/student';
+import { type Student, type StudentUpdate } from '../../types/student';
 import { type Batch } from '../../types/batch';
 import { BatchAPI } from '../../services/api';
 
 interface StudentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (student: Partial<Student>) => void;
+  onSubmit: (student: StudentUpdate) => void;
   student?: Student | null;
   mode: 'create' | 'edit';
 }
@@ -42,6 +42,7 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
   // Confirmation dialog state
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [pendingFormData, setPendingFormData] = useState<Partial<Student> | null>(null);
+  const [changeType, setChangeType] = useState<'progression' | 'correction'>('progression');
   
   // Debounce timeout ref
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -136,6 +137,7 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
     // Reset confirmation dialog state
     setShowConfirmDialog(false);
     setPendingFormData(null);
+    setChangeType('progression');
   }, [student, mode, isOpen]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -184,16 +186,19 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
 
   const handleConfirmStageLevelChange = () => {
     if (pendingFormData) {
-      onSubmit(pendingFormData);
+      // Include changeType in the form data
+      onSubmit({ ...pendingFormData, changeType });
       onClose();
     }
     setShowConfirmDialog(false);
     setPendingFormData(null);
+    setChangeType('progression');
   };
 
   const handleCancelStageLevelChange = () => {
     setShowConfirmDialog(false);
     setPendingFormData(null);
+    setChangeType('progression');
   };
 
   return (
@@ -410,7 +415,7 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
       {/* Confirmation Dialog for Stage/Level Change */}
       {showConfirmDialog && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
                 <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -419,41 +424,121 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
               </div>
               <h3 className="text-lg font-semibold text-gray-900">Confirm Stage/Level Change</h3>
             </div>
-            
-            <div className="mb-6 space-y-3">
+
+            <div className="mb-6 space-y-4">
               <p className="text-sm text-gray-600">
                 You are changing the student from <span className="font-semibold">{originalStage} Level {originalLevel}</span> to <span className="font-semibold">{formData.stage} Level {formData.level}</span>.
               </p>
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                <p className="text-sm text-amber-800">
-                  <strong>This will:</strong>
-                </p>
-                <ul className="text-sm text-amber-700 mt-2 space-y-1 list-disc list-inside">
-                  <li>Delete all upcoming unpaid fee records</li>
-                  <li>Generate new fee records based on the new batch's start date and fee structure</li>
-                  <li>Keep all paid, partially paid, and overdue fees unchanged</li>
-                  <li>Keep all existing credits available</li>
-                </ul>
+
+              {/* Change Type Selection */}
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-gray-900">
+                  What type of change is this?
+                </label>
+
+                <div className="space-y-3">
+                  {/* Progression Option */}
+                  <label className={`relative flex items-start p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                    changeType === 'progression'
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}>
+                    <input
+                      type="radio"
+                      name="changeType"
+                      value="progression"
+                      checked={changeType === 'progression'}
+                      onChange={(e) => setChangeType(e.target.value as 'progression')}
+                      className="mt-1 h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                    />
+                    <div className="ml-3 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-gray-900">Student Progression</span>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                          Recommended
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Student completed {originalStage} Level {originalLevel} and is moving to the next level
+                      </p>
+                      <ul className="text-xs text-gray-500 mt-2 space-y-1">
+                        <li>✓ Keeps all paid fees (student correctly paid for previous level)</li>
+                        <li>✓ Deletes only unpaid upcoming fees</li>
+                        <li>✓ Generates new fees at new level rate</li>
+                      </ul>
+                    </div>
+                  </label>
+
+                  {/* Correction Option */}
+                  <label className={`relative flex items-start p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                    changeType === 'correction'
+                      ? 'border-amber-500 bg-amber-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}>
+                    <input
+                      type="radio"
+                      name="changeType"
+                      value="correction"
+                      checked={changeType === 'correction'}
+                      onChange={(e) => setChangeType(e.target.value as 'correction')}
+                      className="mt-1 h-4 w-4 text-amber-600 border-gray-300 focus:ring-amber-500"
+                    />
+                    <div className="ml-3 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-gray-900">Data Correction</span>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                          Use with caution
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Student was assigned wrong course/level from the start
+                      </p>
+                      <ul className="text-xs text-gray-500 mt-2 space-y-1">
+                        <li>✓ Converts all paid fees to student credits</li>
+                        <li>✓ Deletes all upcoming fees (paid and unpaid)</li>
+                        <li>✓ Generates new fees at correct rate</li>
+                        <li>✓ Auto-applies credits to new fees</li>
+                      </ul>
+                    </div>
+                  </label>
+                </div>
               </div>
-              <p className="text-sm text-gray-600">
-                Are you sure you want to continue?
-              </p>
+
+              {/* Warning Box */}
+              <div className={`rounded-lg p-3 border ${
+                changeType === 'progression'
+                  ? 'bg-blue-50 border-blue-200'
+                  : 'bg-amber-50 border-amber-200'
+              }`}>
+                <p className={`text-xs font-medium ${
+                  changeType === 'progression' ? 'text-blue-800' : 'text-amber-800'
+                }`}>
+                  {changeType === 'progression' ? 'Note:' : 'Important:'}
+                </p>
+                <p className={`text-xs mt-1 ${
+                  changeType === 'progression' ? 'text-blue-700' : 'text-amber-700'
+                }`}>
+                  {changeType === 'progression'
+                    ? 'Historical fees remain unchanged. Only future unpaid fees will be adjusted.'
+                    : 'If student has paid for future months at the wrong rate, those amounts will be converted to credits and reapplied. Student may owe a difference if new rate is higher.'}
+                </p>
+              </div>
             </div>
-            
+
             <div className="flex gap-3 justify-end">
-              <Button 
-                type="button" 
-                variant="ghost" 
+              <Button
+                type="button"
+                variant="ghost"
                 onClick={handleCancelStageLevelChange}
               >
                 Cancel
               </Button>
-              <Button 
-                type="button" 
-                variant="primary" 
+              <Button
+                type="button"
+                variant="primary"
                 onClick={handleConfirmStageLevelChange}
               >
-                Confirm Change
+                Confirm {changeType === 'progression' ? 'Progression' : 'Correction'}
               </Button>
             </div>
           </div>
