@@ -172,7 +172,13 @@ export function parseExcelDate(dateValue: any): Date | null {
   
   // If already a Date object
   if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
-    return dateValue;
+    // Return a new Date to avoid timezone issues
+    // Use UTC to preserve the exact date
+    return new Date(Date.UTC(
+      dateValue.getFullYear(),
+      dateValue.getMonth(),
+      dateValue.getDate()
+    ));
   }
 
   // If it's a string, try to parse it
@@ -183,15 +189,25 @@ export function parseExcelDate(dateValue: any): Date | null {
     }
     
     const parsed = new Date(dateValue);
-    return !isNaN(parsed.getTime()) ? parsed : null;
+    if (!isNaN(parsed.getTime())) {
+      // Return using UTC to preserve the exact date
+      return new Date(Date.UTC(
+        parsed.getFullYear(),
+        parsed.getMonth(),
+        parsed.getDate()
+      ));
+    }
+    return null;
   }
 
   // If it's an Excel serial number
   if (typeof dateValue === 'number') {
     // Excel serial date: days since 1900-01-01 (with leap year bug)
-    const excelEpoch = new Date(1900, 0, 1);
+    // Use UTC to avoid timezone issues
+    const excelEpoch = Date.UTC(1900, 0, 1);
     const days = dateValue - 2; // Adjust for Excel's leap year bug
-    const date = new Date(excelEpoch.getTime() + days * 24 * 60 * 60 * 1000);
+    const timestamp = excelEpoch + days * 24 * 60 * 60 * 1000;
+    const date = new Date(timestamp);
     return !isNaN(date.getTime()) ? date : null;
   }
 

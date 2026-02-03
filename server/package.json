@@ -13,7 +13,19 @@
     "generate-fees": "tsx scripts/GenerateMissingFeeRecords.ts",
     "generate-fees:dry-run": "tsx scripts/GenerateMissingFeeRecords.ts --dry-run",
     "cleanup-fees": "tsx scripts/CleanupExcessFeeRecords.ts",
-    "cleanup-fees:dry-run": "tsx scripts/CleanupExcessFeeRecords.ts --dry-run"
+    "cleanup-fees:dry-run": "tsx scripts/CleanupExcessFeeRecords.ts --dry-run",
+    "fix-fees": "tsx scripts/FixFeeRecordsInDB.ts",
+    "fix-fees:dry-run": "tsx scripts/FixFeeRecordsInDB.ts --dry-run",
+    "fix-fees:all": "tsx scripts/FixFeeRecordsInDB.ts --include-inactive",
+    "fix-batches": "tsx scripts/FixBatchesAndStudents.ts",
+    "fix-batches:dry-run": "tsx scripts/FixBatchesAndStudents.ts --dry-run",
+    "verify-from-excel": "tsx scripts/VerifyAndFixFromExcel.ts",
+    "verify-from-excel:dry-run": "tsx scripts/VerifyAndFixFromExcel.ts --dry-run",
+    "fix-discrepancies": "tsx scripts/FixPaymentDiscrepancies.ts --apply",
+    "fix-discrepancies:dry-run": "tsx scripts/FixPaymentDiscrepancies.ts",
+    "analyze-status": "tsx scripts/AnalyzeFeeAndStudentStatus.ts",
+    "fix-payment-amounts": "tsx scripts/FixPaymentDateWithZeroAmount.ts --apply",
+    "fix-payment-amounts:dry-run": "tsx scripts/FixPaymentDateWithZeroAmount.ts"
   },
   "dependencies": {
     "@microsoft/microsoft-graph-client": "^3.0.7",

@@ -433,17 +433,18 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
   // Add updatedBy
   updateData.updatedBy = userId;
   
-  // If transactionId is being updated, validate it
+  // Get existing fee record for validation and auto-fill logic
+  const existingFee = await FeeRecord.findById(id);
+  if (!existingFee) {
+    return res.status(404).json({
+      success: false,
+      error: 'Fee record not found',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  // Validate transactionId if provided (optional - not required for cash payments)
   if (updateData.transactionId) {
-    const existingFee = await FeeRecord.findById(id);
-    if (!existingFee) {
-      return res.status(404).json({
-        success: false,
-        error: 'Fee record not found',
-        timestamp: new Date().toISOString()
-      });
-    }
-    
     // Check if transactionId is used by another student
     const duplicateTransaction = await FeeRecord.findOne({
       transactionId: updateData.transactionId,
@@ -457,6 +458,31 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
         timestamp: new Date().toISOString()
       });
     }
+  }
+  
+  // Auto-fill paidAmount when paymentDate is set (works for both cash and online payments)
+  // If paymentDate is being added/updated and paidAmount is not explicitly provided or is 0,
+  // assume full payment and set paidAmount to feeAmount
+  if (updateData.paymentDate !== undefined) {
+    if (updateData.paymentDate !== null) {
+      // Payment date is being set
+      if (updateData.paidAmount === undefined || updateData.paidAmount === 0) {
+        // Default to full payment if paidAmount not specified or is 0
+        updateData.paidAmount = existingFee.feeAmount;
+      }
+    } else {
+      // Payment date is being cleared - reset paidAmount to 0
+      updateData.paidAmount = 0;
+    }
+  }
+  
+  // Validate that paidAmount does not exceed feeAmount
+  if (updateData.paidAmount !== undefined && updateData.paidAmount > existingFee.feeAmount) {
+    return res.status(400).json({
+      success: false,
+      error: `Paid amount (₹${updateData.paidAmount}) cannot exceed fee amount (₹${existingFee.feeAmount})`,
+      timestamp: new Date().toISOString()
+    });
   }
   
   const fee = await FeeRecord.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });

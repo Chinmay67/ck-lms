@@ -280,8 +280,17 @@ export class BatchService {
         previousBatch = await Batch.findById(student.batchId).session(session);
       }
 
-      // Set fee cycle start date to batch start date
-      student.feeCycleStartDate = batch.startDate;
+      // Set fee cycle start date to the LATER of batch start date or student enrollment date
+      // This prevents creating fees for months before the student actually joined
+      const studentEnrollmentDate = student.enrollmentDate || new Date();
+      const batchStartDate = batch.startDate;
+
+      // Use whichever date is later
+      const feeCycleStart = batchStartDate > studentEnrollmentDate
+        ? batchStartDate
+        : studentEnrollmentDate;
+
+      student.feeCycleStartDate = feeCycleStart;
 
       // Update student's batch
       student.batchId = batch._id as any;
@@ -289,36 +298,35 @@ export class BatchService {
       student.batch = batch.batchName;
       await student.save({ session });
 
-      // Generate initial fee records based on batch start date
+      // Delete any existing unpaid fees to prevent conflicts
+      await mongoose.model('FeeRecord').deleteMany({
+        studentId,
+        paidAmount: 0,
+        dueDate: { $gte: feeCycleStart }
+      }).session(session);
+
+      // Generate initial fee records based on the determined fee cycle start date
       const stage = studentStage;
       const createdFees = await FeeService.createInitialOverdueFeesForStudent(
         studentId,
-        batch.startDate,
+        feeCycleStart,
         stage,
         session
       );
 
-      // Get fee amount for credit application
-      const Course = (await import('../models/Course.js')).default;
-      const course = await Course.findOne({ 
-        courseName: stage, 
-        isActive: true 
-      }).session(session);
-      
-      let creditResult = { monthsPaid: 0, amountUsed: 0, remainingCredit: 0 };
-      
-      if (course && course.levels && course.levels.length > 0) {
-        const levelConfig = course.levels.find((l: any) => l.levelNumber === studentLevel) || course.levels[0];
-        
-        if (levelConfig) {
-          // Apply any active credits to pay fees
-          creditResult = await StudentCreditService.applyCreditToFees({
-            studentId,
-            studentName: student.studentName,
-            monthlyFeeAmount: levelConfig.feeAmount,
-            processedBy: student._id as any // Using student ID as processedBy since this is auto-applied
-          });
-        }
+      // Apply any active credits to pay fees using the new method
+      let creditResult = { feesCount: 0, amountUsed: 0, remainingCredit: 0 };
+
+      try {
+        creditResult = await StudentCreditService.applyCreditsToFeeRecords({
+          studentId,
+          studentName: student.studentName,
+          processedBy: student._id as any, // Using student ID as processedBy since this is auto-applied
+          session
+        });
+      } catch (creditError: any) {
+        // Log but don't fail if credit application fails
+        console.warn(`Credit application failed for student ${studentId}: ${creditError.message}`);
       }
 
       await session.commitTransaction();
@@ -542,41 +550,49 @@ export class BatchService {
             previousBatchName = prevBatch?.batchName;
           }
 
-          // Set fee cycle start date to batch start date
-          student.feeCycleStartDate = batch.startDate;
+          // Set fee cycle start date to the LATER of batch start date or student enrollment date
+          const studentEnrollmentDate = student.enrollmentDate || new Date();
+          const batchStartDate = batch.startDate;
+
+          // Use whichever date is later
+          const feeCycleStart = batchStartDate > studentEnrollmentDate
+            ? batchStartDate
+            : studentEnrollmentDate;
+
+          student.feeCycleStartDate = feeCycleStart;
 
           // Update student's batch
           student.batchId = batch._id as any;
           student.batch = batch.batchName;
           await student.save({ session });
 
-          // Generate initial fee records based on batch start date
+          // Delete any existing unpaid fees to prevent conflicts
+          await mongoose.model('FeeRecord').deleteMany({
+            studentId,
+            paidAmount: 0,
+            dueDate: { $gte: feeCycleStart }
+          }).session(session);
+
+          // Generate initial fee records based on the determined fee cycle start date
           const stage = studentStage;
           await FeeService.createInitialOverdueFeesForStudent(
             studentId,
-            batch.startDate,
+            feeCycleStart,
             stage,
             session
           );
 
-          // Apply credits if applicable
-          const Course = (await import('../models/Course.js')).default;
-          const course = await Course.findOne({ 
-            courseName: stage, 
-            isActive: true 
-          }).session(session);
-          
-          if (course && course.levels && course.levels.length > 0) {
-            const levelConfig = course.levels.find((l: any) => l.levelNumber === studentLevel) || course.levels[0];
-            
-            if (levelConfig) {
-              await StudentCreditService.applyCreditToFees({
-                studentId,
-                studentName: student.studentName,
-                monthlyFeeAmount: levelConfig.feeAmount,
-                processedBy: student._id as any
-              });
-            }
+          // Apply credits if applicable using the new method
+          try {
+            await StudentCreditService.applyCreditsToFeeRecords({
+              studentId,
+              studentName: student.studentName,
+              processedBy: student._id as any,
+              session
+            });
+          } catch (creditError: any) {
+            // Log but don't fail if credit application fails
+            console.warn(`Credit application failed for student ${studentId}: ${creditError.message}`);
           }
 
           results.push({

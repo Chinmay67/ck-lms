@@ -142,16 +142,29 @@ async function generateMissingFeesForStudent(student: any): Promise<{
       };
     }
 
-    // Determine fee cycle start date - prioritize feeCycleStartDate over enrollmentDate
+    // Determine fee cycle start date - use the LATER of feeCycleStartDate or enrollmentDate
+    // This prevents creating fees for periods before student actually enrolled
     let feeCycleStartDate: Date;
     let cycleStartSource: string;
-    
-    if (student.feeCycleStartDate) {
+
+    if (student.feeCycleStartDate && student.enrollmentDate) {
+      const feeStart = new Date(student.feeCycleStartDate);
+      const enrollStart = new Date(student.enrollmentDate);
+
+      // Use whichever is later
+      if (feeStart > enrollStart) {
+        feeCycleStartDate = feeStart;
+        cycleStartSource = 'feeCycleStartDate (later than enrollment)';
+      } else {
+        feeCycleStartDate = enrollStart;
+        cycleStartSource = 'enrollmentDate (later than or equal to fee cycle)';
+      }
+    } else if (student.feeCycleStartDate) {
       feeCycleStartDate = new Date(student.feeCycleStartDate);
       cycleStartSource = 'feeCycleStartDate';
     } else if (student.enrollmentDate) {
       feeCycleStartDate = new Date(student.enrollmentDate);
-      cycleStartSource = 'enrollmentDate (fallback)';
+      cycleStartSource = 'enrollmentDate';
     } else {
       return {
         ...result,

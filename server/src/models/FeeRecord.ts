@@ -119,13 +119,23 @@ FeeRecordSchema.virtual('status').get(function() {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   
-  if (this.paymentDate) {
-    // If payment date exists, check if fully paid or partially paid
-    return this.paidAmount >= this.feeAmount ? 'paid' : 'partially_paid';
-  } else {
-    // No payment date - check if overdue or upcoming
+  // Check if fully paid first (regardless of paymentDate for robustness)
+  if (this.paidAmount >= this.feeAmount) {
+    return 'paid';
+  }
+  
+  // Check if partially paid (has paymentDate but not fully paid)
+  if (this.paymentDate && this.paidAmount > 0 && this.paidAmount < this.feeAmount) {
+    return 'partially_paid';
+  }
+  
+  // No payment made - check if overdue or upcoming
+  if (!this.paymentDate || this.paidAmount === 0) {
     return this.dueDate < now ? 'overdue' : 'upcoming';
   }
+  
+  // Fallback (should not reach here)
+  return this.dueDate < now ? 'overdue' : 'upcoming';
 });
 
 FeeRecordSchema.pre('deleteOne', { document: true, query: false }, async function() {

@@ -616,16 +616,35 @@ async function ingestStudents(filePath: string) {
       
       // Create student
       const student = await createStudent(data, batchId);
-      
-      // If student has batch assignment and has payments, create fee records
-      if (batchId && data.payments.length > 0) {
-        await createFeeRecords(
-          student,
-          data.payments,
-          data.duration,
-          data.stage!,
-          data.levelNumber!
-        );
+
+      // If student has batch assignment, handle fees
+      if (batchId) {
+        // First, create fee records for paid months if any payments exist
+        if (data.payments.length > 0) {
+          await createFeeRecords(
+            student,
+            data.payments,
+            data.duration,
+            data.stage!,
+            data.levelNumber!
+          );
+        }
+
+        // Then, fill in any missing fee records from feeCycleStartDate to current month
+        // This ensures continuous fee records even if some months weren't paid
+        const FeeService = (await import('../src/services/FeeService.js')).FeeService;
+        const feeCycleStart = student.feeCycleStartDate || student.enrollmentDate;
+
+        try {
+          await FeeService.createInitialOverdueFeesForStudent(
+            student._id.toString(),
+            feeCycleStart,
+            data.stage!
+          );
+          console.log(`✅ Filled missing fee records for ${student.studentName}`);
+        } catch (feeError: any) {
+          console.warn(`⚠️  Failed to fill missing fees for ${student.studentName}: ${feeError.message}`);
+        }
       }
       // If NO batch assignment but has payments, create credits
       else if (!batchId && data.payments.length > 0) {
