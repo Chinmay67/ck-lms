@@ -48,6 +48,21 @@ const FeeRecordSchema = new Schema<IFeeRecord>({
     required: [true, 'Fee amount is required'],
     min: [0, 'Fee amount cannot be negative']
   },
+  originalFeeAmount: {
+    type: Number,
+    min: [0, 'Original fee amount cannot be negative']
+  },
+  discountPercentage: {
+    type: Number,
+    default: 0,
+    min: [0, 'Discount cannot be negative'],
+    max: [100, 'Discount cannot exceed 100%']
+  },
+  discountReason: {
+    type: String,
+    trim: true,
+    maxlength: [200, 'Discount reason cannot exceed 200 characters']
+  },
   paidAmount: {
     type: Number,
     default: 0,
@@ -96,6 +111,14 @@ FeeRecordSchema.index({ dueDate: 1 });
 FeeRecordSchema.index({ paymentDate: 1 });
 FeeRecordSchema.index({ transactionId: 1 });
 FeeRecordSchema.index({ createdAt: -1 });
+
+// Pre-save: auto-set originalFeeAmount if not provided
+FeeRecordSchema.pre('save', function(next) {
+  if (this.isNew && !this.originalFeeAmount) {
+    this.originalFeeAmount = this.feeAmount;
+  }
+  next();
+});
 
 // Compound indexes for common queries (optimized for computed status)
 FeeRecordSchema.index({ studentId: 1, dueDate: 1 });

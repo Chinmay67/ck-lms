@@ -75,7 +75,7 @@ export interface ISyncJob extends Document {
   };
   createdAt: Date;
   updatedAt: Date;
-  
+
   // Instance methods
   markAsRunning(): Promise<ISyncJob>;
   markAsCompleted(): Promise<ISyncJob>;
@@ -160,6 +160,9 @@ export interface IFeeRecord extends Document {
   // Note: 'status' is a virtual computed field, not stored in DB
   // Computed as: paid | partially_paid | overdue | upcoming
   feeAmount: number;
+  originalFeeAmount?: number;
+  discountPercentage?: number;
+  discountReason?: string;
   paidAmount: number;
   paymentDate?: Date;
   paymentMethod?: 'cash' | 'online' | 'card' | 'upi' | 'other';
@@ -221,7 +224,7 @@ export interface IBatch extends Document {
   createdAt: Date;
   updatedAt: Date;
   currentStudentCount?: number; // Virtual field
-  
+
   // Instance methods
   isAtCapacity(): Promise<boolean>;
   canAcceptStudent(): Promise<{ canAccept: boolean; reason?: string }>;

@@ -43,23 +43,23 @@ export class FeeService {
       }
 
       // Get course configuration for the stage
-      const course = await Course.findOne({ 
-        courseName: stage, 
-        isActive: true 
+      const course = await Course.findOne({
+        courseName: stage,
+        isActive: true
       }).session(session || null);
 
       if (!course || course.levels.length === 0) {
         throw new Error(`No active course configuration found for stage: ${stage}`);
       }
-      
+
       // Get fee amount from the first level (or use student's level if available)
       const studentLevel = student.level || student.skillLevel || 1;
       const levelConfig = course.levels.find((l: any) => l.levelNumber === studentLevel) || course.levels[0];
-      
+
       if (!levelConfig) {
         throw new Error(`No level configuration found for course: ${stage}`);
       }
-      
+
       const feeAmount = levelConfig.feeAmount;
 
       // Determine start month (use provided date or student's fee cycle start date)
@@ -132,9 +132,9 @@ export class FeeService {
    */
   static async getCourseConfigurationForStage(stage: string): Promise<any> {
     try {
-      return await Course.findOne({ 
-        courseName: stage.toLowerCase(), 
-        isActive: true 
+      return await Course.findOne({
+        courseName: stage.toLowerCase(),
+        isActive: true
       });
     } catch (error: any) {
       throw new Error(`Failed to get course configuration: ${error.message}`);
@@ -164,12 +164,12 @@ export class FeeService {
     enrollmentDate: Date
   ): Date {
     const dueDate = new Date(monthDate);
-    
+
     // Always use enrollment day for all fees
     const enrollDay = enrollmentDate.getDate();
     const lastDayOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
     dueDate.setDate(Math.min(enrollDay, lastDayOfMonth));
-    
+
     dueDate.setHours(23, 59, 59, 999);
     return dueDate;
   }
@@ -203,7 +203,7 @@ export class FeeService {
         try {
           // Check if student already has fee records
           const existingFees = await FeeRecord.find({ studentId: (student._id as any).toString() });
-          
+
           if (existingFees.length > 0) {
             // Skip students who already have fee records
             continue;
@@ -215,7 +215,7 @@ export class FeeService {
             student.enrollmentDate,
             monthsToGenerate
           );
-          
+
           results.successful++;
         } catch (error: any) {
           results.failed++;
@@ -255,9 +255,9 @@ export class FeeService {
     try {
       const now = new Date();
       now.setHours(0, 0, 0, 0);
-      
-      const count = await FeeRecord.countDocuments({ 
-        studentId, 
+
+      const count = await FeeRecord.countDocuments({
+        studentId,
         paymentDate: null,
         dueDate: { $gte: now }
       });
@@ -276,9 +276,9 @@ export class FeeService {
     try {
       const now = new Date();
       now.setHours(0, 0, 0, 0);
-      
-      return await FeeRecord.findOne({ 
-        studentId, 
+
+      return await FeeRecord.findOne({
+        studentId,
         paymentDate: null,
         dueDate: { $gte: now }
       }).sort({ dueDate: 1 });
@@ -296,8 +296,8 @@ export class FeeService {
     try {
       const now = new Date();
       now.setHours(0, 0, 0, 0);
-      
-      const count = await FeeRecord.countDocuments({ 
+
+      const count = await FeeRecord.countDocuments({
         studentId,
         paymentDate: null,
         dueDate: { $lt: now }
@@ -337,26 +337,39 @@ export class FeeService {
       }
 
       // Get course configuration for the stage
-      const course = await Course.findOne({ 
-        courseName: stage, 
-        isActive: true 
+      const course = await Course.findOne({
+        courseName: stage,
+        isActive: true
       }).session(session || null);
 
       if (!course || course.levels.length === 0) {
         console.warn(`No active course configuration found for stage: ${stage}`);
         return null;
       }
-      
+
       // Get fee amount from the first level (or use student's level if available)
       const studentLevel = student.level || student.skillLevel || 1;
       const levelConfig = course.levels.find((l: any) => l.levelNumber === studentLevel) || course.levels[0];
-      
+
       if (!levelConfig) {
         console.warn(`No level configuration found for course: ${stage}`);
         return null;
       }
-      
+
       const feeAmount = levelConfig.feeAmount;
+      const durationMonths = levelConfig.durationMonths || 12; // Fallback to 12 if not set
+
+      // Check durationMonths cap — count existing fee records for this student at this stage/level
+      const existingFeeCount = await FeeRecord.countDocuments({
+        studentId,
+        stage,
+        level: student.level || student.skillLevel
+      }).session(session || null);
+
+      if (existingFeeCount >= durationMonths) {
+        console.log(`Student ${studentId} has reached durationMonths cap (${durationMonths}) for ${stage} L${student.level || student.skillLevel}, skipping fee generation`);
+        return null;
+      }
 
       // Check if student has any overdue fees
       const hasOverdue = await this.hasOverdueFees(studentId);
@@ -429,7 +442,7 @@ export class FeeService {
 
       await fee.save({ session: session || null });
       console.log(`Created fee record for student ${studentId}, month ${feeMonth}`);
-      
+
       return fee;
     } catch (error: any) {
       console.error(`Failed to generate next month fee: ${error.message}`);
@@ -467,24 +480,41 @@ export class FeeService {
       const startDate = feeCycleStartDate || enrollmentDate;
 
       // Get course configuration for the stage
-      const course = await Course.findOne({ 
-        courseName: stage.toLowerCase(), 
-        isActive: true 
+      const course = await Course.findOne({
+        courseName: stage.toLowerCase(),
+        isActive: true
       }).session(session || null);
 
       if (!course || course.levels.length === 0) {
         throw new Error(`No active course configuration found for stage: ${stage}`);
       }
-      
+
       // Get fee amount from the first level (or use student's level if available)
       const studentLevel = student.level || student.skillLevel || 1;
       const levelConfig = course.levels.find((l: any) => l.levelNumber === studentLevel) || course.levels[0];
-      
+
       if (!levelConfig) {
         throw new Error(`No level configuration found for course: ${stage}`);
       }
-      
+
       const feeAmount = levelConfig.feeAmount;
+      const durationMonths = levelConfig.durationMonths || 12; // Fallback to 12 if not set
+
+      // Calculate late joiner offset
+      // If student joined late relative to the fee cycle start, reduce max fees
+      const batchStartMonth = new Date(startDate);
+      batchStartMonth.setDate(1);
+      batchStartMonth.setHours(0, 0, 0, 0);
+
+      const studentJoinMonth = new Date(student.enrollmentDate || startDate);
+      studentJoinMonth.setDate(1);
+      studentJoinMonth.setHours(0, 0, 0, 0);
+
+      const monthsLate = Math.max(0,
+        (studentJoinMonth.getFullYear() - batchStartMonth.getFullYear()) * 12 +
+        (studentJoinMonth.getMonth() - batchStartMonth.getMonth())
+      );
+      const maxFees = Math.max(1, durationMonths - monthsLate);
 
       const createdFees: any[] = [];
       const currentDate = new Date();
@@ -497,15 +527,14 @@ export class FeeService {
       monthDate.setHours(0, 0, 0, 0);
 
       // Generate fee records from enrollment month onwards
-      // Create past months and current month only (do not create future months)
+      // Capped by durationMonths (adjusted for late joiners) and current month
       let monthsProcessed = 0;
-      const maxMonths = 100; // Safety limit
 
-      while (monthsProcessed < maxMonths) {
+      while (monthsProcessed < maxFees) {
         // Check if we've gone past current month BEFORE creating fee
         if (monthDate.getFullYear() > currentDate.getFullYear() ||
-            (monthDate.getFullYear() === currentDate.getFullYear() && 
-             monthDate.getMonth() > currentDate.getMonth())) {
+          (monthDate.getFullYear() === currentDate.getFullYear() &&
+            monthDate.getMonth() > currentDate.getMonth())) {
           break;  // Stop before creating next month
         }
 
@@ -540,7 +569,7 @@ export class FeeService {
         monthsProcessed++;
       }
 
-      console.log(`Created ${createdFees.length} initial fees for student ${studentId}`);
+      console.log(`Created ${createdFees.length} initial fees for student ${studentId} (durationMonths: ${durationMonths}, monthsLate: ${monthsLate}, maxFees: ${maxFees})`);
       return createdFees;
     } catch (error: any) {
       console.error(`Failed to create initial fees: ${error.message}`);
@@ -576,6 +605,13 @@ export class FeeService {
     convertedCreditAmount: number;
     appliedFeesCount: number;
     effectiveDate: Date;
+    rateMismatchWarning?: {
+      month: string;
+      paidAmount: number;
+      oldRate: number;
+      newRate: number;
+      difference: number;
+    }[];
   }> {
     try {
       // Get the student
@@ -601,6 +637,7 @@ export class FeeService {
       let deletedFeesCount = 0;
       let convertedCreditAmount = 0;
       let appliedFeesCount = 0;
+      let rateMismatchWarning: { month: string; paidAmount: number; oldRate: number; newRate: number; difference: number; }[] | undefined;
 
       // ============================================================
       // BRANCH: Different logic based on changeType
@@ -663,6 +700,40 @@ export class FeeService {
 
         deletedFeesCount = deleteResult.deletedCount || 0;
         console.log(`[PROGRESSION] Deleted ${deletedFeesCount} unpaid upcoming fees`);
+
+        // Check for rate mismatch on PAID future fees
+        // Get the new course config to compare rates
+        const newCourse = await Course.findOne({
+          courseName: newStage.toLowerCase(),
+          isActive: true
+        }).session(session || null);
+
+        if (newCourse) {
+          const newLevelConfig = newCourse.levels.find((l: any) => l.levelNumber === newLevel) || newCourse.levels[0];
+          if (newLevelConfig) {
+            const newRate = newLevelConfig.feeAmount;
+            const paidFutureFees = await FeeRecord.find({
+              studentId,
+              paidAmount: { $gt: 0 },
+              dueDate: { $gte: currentDate }
+            }).session(session || null);
+
+            const mismatches = paidFutureFees
+              .filter(fee => fee.feeAmount !== newRate)
+              .map(fee => ({
+                month: fee.feeMonth,
+                paidAmount: fee.paidAmount,
+                oldRate: fee.feeAmount,
+                newRate: newRate,
+                difference: newRate - fee.feeAmount
+              }));
+
+            if (mismatches.length > 0) {
+              rateMismatchWarning = mismatches;
+              console.log(`[PROGRESSION] Rate mismatch detected for ${mismatches.length} paid future fees`);
+            }
+          }
+        }
 
         // No credit conversion needed for progression
       }
@@ -737,7 +808,8 @@ export class FeeService {
         createdFeesCount: createdFees.length,
         convertedCreditAmount,
         appliedFeesCount,
-        effectiveDate
+        effectiveDate,
+        rateMismatchWarning
       };
     } catch (error: any) {
       console.error(`Failed to handle stage/level ${changeType}: ${error.message}`);

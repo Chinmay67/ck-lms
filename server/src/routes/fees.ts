@@ -17,8 +17,8 @@ const router = Router();
 function getStatusQuery(status: string): any {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
-  
-  switch(status) {
+
+  switch (status) {
     case 'paid':
       return { paymentDate: { $ne: null }, $expr: { $gte: ['$paidAmount', '$feeAmount'] } };
     case 'partially_paid':
@@ -67,15 +67,15 @@ router.get('/', asyncHandler(async (req: Request, res: Response<ApiResponse<Pagi
   const sortOrder = (req.query.sortOrder as 'asc' | 'desc') || 'asc';
 
   const query: any = {};
-  
+
   if (status) {
     Object.assign(query, getStatusQuery(status));
   }
-  
+
   if (stage) {
     query.stage = stage;
   }
-  
+
   if (studentId) {
     query.studentId = studentId;
   }
@@ -112,7 +112,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response<ApiResponse<Pagi
 // GET /api/fees/student/:studentId - Get fees for specific student
 router.get('/student/:studentId', asyncHandler(async (req: Request, res: Response<ApiResponse<IFeeRecord[]>>) => {
   const { studentId } = req.params;
-  
+
   if (!studentId) {
     return res.status(400).json({
       success: false,
@@ -120,9 +120,9 @@ router.get('/student/:studentId', asyncHandler(async (req: Request, res: Respons
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const fees = await FeeRecord.find({ studentId }).sort({ dueDate: 1 });
-  
+
   return res.json({
     success: true,
     data: fees,
@@ -135,14 +135,14 @@ router.get('/student/:studentId', asyncHandler(async (req: Request, res: Respons
 router.get('/overdue', asyncHandler(async (req: Request, res: Response<ApiResponse<IFeeRecord[]>>) => {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
-  
-  const overdueFees = await FeeRecord.find({ 
+
+  const overdueFees = await FeeRecord.find({
     paymentDate: null,
     dueDate: { $lt: now }
   })
     .sort({ dueDate: 1 })
     .populate('studentId', 'studentName email phone');
-  
+
   return res.json({
     success: true,
     data: overdueFees,
@@ -282,7 +282,7 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
   };
 
   const stageStudentMap = new Map();
-  
+
   allFees.forEach((fee: any) => {
     const stage = fee.stage as keyof typeof stageBreakdown;
     if (stageBreakdown[stage]) {
@@ -292,7 +292,7 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
         stageStudentMap.set(studentKey, true);
         stageBreakdown[stage].students += 1;
       }
-      
+
       // Calculate status for this fee
       let feeStatus: 'paid' | 'partially_paid' | 'overdue' | 'upcoming';
       if (fee.paymentDate) {
@@ -300,7 +300,7 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
       } else {
         feeStatus = fee.dueDate < today ? 'overdue' : 'upcoming';
       }
-      
+
       // Track amounts based on calculated status
       if (feeStatus === 'paid') {
         stageBreakdown[stage].collected += fee.paidAmount;
@@ -323,7 +323,7 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
     } else {
       feeStatus = fee.dueDate < today ? 'overdue' : 'upcoming';
     }
-    
+
     if (feeStatus === 'overdue') {
       const key = fee.studentId.toString();
       if (!overdueStudentMap.has(key)) {
@@ -369,7 +369,7 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
 router.post('/', asyncHandler(async (req: Request, res: Response<ApiResponse<IFeeRecord | IFeeRecord[]>>) => {
   const feeData = req.body;
   const userId = (req as any).user.id;
-  
+
   // Handle bulk creation
   if (Array.isArray(feeData)) {
     const createdFees: IFeeRecord[] = [];
@@ -393,7 +393,7 @@ router.post('/', asyncHandler(async (req: Request, res: Response<ApiResponse<IFe
   } else {
     // Single fee record creation
     const fee = await createFeeRecord(feeData, userId);
-    
+
     return res.status(201).json({
       success: true,
       data: fee,
@@ -408,7 +408,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
   const { id } = req.params;
   const updateData = req.body;
   const userId = (req as any).user.id;
-  
+
   if (!id) {
     return res.status(400).json({
       success: false,
@@ -416,7 +416,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Remove fields that shouldn't be updated directly
   delete updateData.id;
   delete updateData._id;
@@ -428,11 +428,33 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
   delete updateData.level;
   delete updateData.feeMonth;
   delete updateData.dueDate;
-  delete updateData.feeAmount;
-  
+
+  // Allow feeAmount edits ONLY on fully unpaid records
+  if (updateData.feeAmount !== undefined) {
+    const existingForAmountCheck = await FeeRecord.findById(id);
+    if (existingForAmountCheck && existingForAmountCheck.paidAmount > 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot change fee amount on a record that has payments. Use correction flow instead.',
+        timestamp: new Date().toISOString()
+      });
+    }
+    if (updateData.feeAmount < 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Fee amount cannot be negative',
+        timestamp: new Date().toISOString()
+      });
+    }
+    // Store original amount if not already set
+    if (existingForAmountCheck && !existingForAmountCheck.originalFeeAmount) {
+      updateData.originalFeeAmount = existingForAmountCheck.feeAmount;
+    }
+  }
+
   // Add updatedBy
   updateData.updatedBy = userId;
-  
+
   // Get existing fee record for validation and auto-fill logic
   const existingFee = await FeeRecord.findById(id);
   if (!existingFee) {
@@ -442,7 +464,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Validate transactionId if provided (optional - not required for cash payments)
   if (updateData.transactionId) {
     // Check if transactionId is used by another student
@@ -450,7 +472,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
       transactionId: updateData.transactionId,
       studentId: { $ne: existingFee.studentId }
     });
-    
+
     if (duplicateTransaction) {
       return res.status(400).json({
         success: false,
@@ -459,7 +481,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
       });
     }
   }
-  
+
   // Auto-fill paidAmount when paymentDate is set (works for both cash and online payments)
   // If paymentDate is being added/updated and paidAmount is not explicitly provided or is 0,
   // assume full payment and set paidAmount to feeAmount
@@ -475,7 +497,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
       updateData.paidAmount = 0;
     }
   }
-  
+
   // Validate that paidAmount does not exceed feeAmount
   if (updateData.paidAmount !== undefined && updateData.paidAmount > existingFee.feeAmount) {
     return res.status(400).json({
@@ -484,9 +506,9 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const fee = await FeeRecord.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
-  
+
   if (!fee) {
     return res.status(404).json({
       success: false,
@@ -506,7 +528,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
 // DELETE /api/fees/:id - Delete fee record
 router.delete('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { id } = req.params;
-  
+
   if (!id) {
     return res.status(400).json({
       success: false,
@@ -514,9 +536,9 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response<ApiRespons
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const deleted = await FeeRecord.findByIdAndDelete(id);
-  
+
   if (!deleted) {
     return res.status(404).json({
       success: false,
@@ -532,11 +554,70 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response<ApiRespons
   });
 }));
 
+// PATCH /api/fees/:id/correct-amount - Admin endpoint to correct fee amount on unpaid record
+router.patch('/:id/correct-amount', asyncHandler(async (req: Request, res: Response<ApiResponse<IFeeRecord>>) => {
+  const { id } = req.params;
+  const { feeAmount, reason } = req.body;
+  const userId = (req as any).user.id;
+
+  if (!id) {
+    return res.status(400).json({
+      success: false,
+      error: 'Fee record ID is required',
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  if (feeAmount === undefined || feeAmount < 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Valid fee amount is required (must be >= 0)',
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  const existingFee = await FeeRecord.findById(id);
+  if (!existingFee) {
+    return res.status(404).json({
+      success: false,
+      error: 'Fee record not found',
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  if (existingFee.paidAmount > 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Cannot correct fee amount on a record that has payments. Convert to credit first via correction flow.',
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Store original amount if not already set
+  if (!existingFee.originalFeeAmount) {
+    existingFee.originalFeeAmount = existingFee.feeAmount;
+  }
+
+  existingFee.feeAmount = feeAmount;
+  if (reason) {
+    existingFee.discountReason = reason;
+  }
+  existingFee.updatedBy = userId;
+  await existingFee.save();
+
+  return res.json({
+    success: true,
+    data: existingFee,
+    message: 'Fee amount corrected successfully',
+    timestamp: new Date().toISOString()
+  });
+}));
+
 // POST /api/fees/bulk-payment - Record payment for multiple months
 router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<ApiResponse<any>>) => {
-  const { studentId, months, paymentDate, paymentMethod, transactionId, remarks, paidAmount } = req.body;
+  const { studentId, months, paymentDate, paymentMethod, transactionId, remarks, paidAmount, discountPercentage, discountReason } = req.body;
   const userId = (req as any).user.id;
-  
+
   // Validation
   if (!studentId) {
     return res.status(400).json({
@@ -545,7 +626,7 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
       timestamp: new Date().toISOString()
     });
   }
-  
+
   if (!paymentDate || !paymentMethod) {
     return res.status(400).json({
       success: false,
@@ -553,7 +634,7 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Get student details
   const student = await Student.findById(studentId);
   if (!student) {
@@ -563,13 +644,13 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Get course configuration for student's stage
-  const course = await Course.findOne({ 
+  const course = await Course.findOne({
     courseName: student.stage || student.skillCategory,
-    isActive: true 
+    isActive: true
   });
-  
+
   if (!course || course.levels.length === 0) {
     return res.status(400).json({
       success: false,
@@ -577,11 +658,11 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Get fee amount from the first level (or use student's level if available)
   const studentLevel = student.level || student.skillLevel || 1;
   const levelConfig = course.levels.find((l: any) => l.levelNumber === studentLevel) || course.levels[0];
-  
+
   if (!levelConfig) {
     return res.status(400).json({
       success: false,
@@ -589,14 +670,14 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const feeAmount = levelConfig.feeAmount;
-  
+
   // Check if student has a batch assigned
   if (!student.batchId) {
     // Student has no batch - create active credit instead
     const totalAmount = paidAmount || (months && Array.isArray(months) ? months.length * feeAmount : feeAmount);
-    
+
     const credit = await StudentCreditService.addCredit({
       studentId,
       studentName: student.studentName,
@@ -606,7 +687,7 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
       transactionId,
       processedBy: userId
     });
-    
+
     return res.status(201).json({
       success: true,
       data: {
@@ -617,7 +698,7 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Student has a batch - proceed with normal fee payment
   if (!months || !Array.isArray(months) || months.length === 0) {
     return res.status(400).json({
@@ -626,7 +707,7 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Validate transaction ID if provided
   if (transactionId) {
     // Check if transactionId is used by another student
@@ -634,7 +715,7 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
       transactionId,
       studentId: { $ne: studentId }
     });
-    
+
     if (duplicateTransaction) {
       return res.status(400).json({
         success: false,
@@ -642,15 +723,15 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
         timestamp: new Date().toISOString()
       });
     }
-    
+
     // Check if months are consecutive for the same transaction ID
     const sortedMonths = [...months].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
     for (let i = 1; i < sortedMonths.length; i++) {
       const prevMonth = new Date(sortedMonths[i - 1].dueDate);
       const currMonth = new Date(sortedMonths[i].dueDate);
-      const monthDiff = (currMonth.getMonth() - prevMonth.getMonth()) + 
-                        (currMonth.getFullYear() - prevMonth.getFullYear()) * 12;
-      
+      const monthDiff = (currMonth.getMonth() - prevMonth.getMonth()) +
+        (currMonth.getFullYear() - prevMonth.getFullYear()) * 12;
+
       if (monthDiff !== 1) {
         return res.status(400).json({
           success: false,
@@ -660,11 +741,11 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
       }
     }
   }
-  
+
   // Create fee records for each month
   const createdFees: IFeeRecord[] = [];
   const errors: Array<{ month: string; error: string }> = [];
-  
+
   for (const monthData of months) {
     try {
       // Check if fee record already exists
@@ -672,23 +753,34 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
         studentId,
         feeMonth: monthData.feeMonth
       });
-      
+
       if (existingFee) {
         // Update existing fee record
-        const amountToPay = paidAmount || feeAmount;
-        existingFee.paidAmount = Math.min(existingFee.paidAmount + amountToPay, feeAmount);
+        const amountToPay = paidAmount || existingFee.feeAmount;
+        existingFee.paidAmount = Math.min(existingFee.paidAmount + amountToPay, existingFee.feeAmount);
         existingFee.paymentDate = new Date(paymentDate);
         existingFee.paymentMethod = paymentMethod;
         existingFee.transactionId = transactionId;
         existingFee.remarks = remarks;
         existingFee.updatedBy = userId;
-        
+
         await existingFee.save();
         createdFees.push(existingFee);
       } else {
-        // Create new fee record (status is computed dynamically)
-        const amountToPay = paidAmount || feeAmount;
-        
+        // Calculate discounted fee amount if discount provided
+        let actualFeeForRecord = feeAmount;
+        let originalFeeForRecord = feeAmount;
+        let discPct = 0;
+        let discReason = '';
+        if (discountPercentage && discountPercentage > 0 && discountPercentage <= 100) {
+          originalFeeForRecord = feeAmount;
+          actualFeeForRecord = Math.round(feeAmount * (1 - discountPercentage / 100));
+          discPct = discountPercentage;
+          discReason = discountReason || `${discountPercentage}% discount applied`;
+        }
+
+        const amountToPay = paidAmount || actualFeeForRecord;
+
         const fee = await FeeRecord.create({
           studentId,
           studentName: student.studentName,
@@ -696,8 +788,11 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
           level: student.level || student.skillLevel,
           feeMonth: monthData.feeMonth,
           dueDate: new Date(monthData.dueDate),
-          feeAmount: feeAmount,
-          paidAmount: amountToPay,
+          feeAmount: actualFeeForRecord,
+          originalFeeAmount: originalFeeForRecord,
+          discountPercentage: discPct,
+          discountReason: discReason || undefined,
+          paidAmount: Math.min(amountToPay, actualFeeForRecord),
           paymentDate: new Date(paymentDate),
           paymentMethod,
           transactionId,
@@ -710,7 +805,7 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
       errors.push({ month: monthData.feeMonth, error: error.message });
     }
   }
-  
+
   // Automatically generate the next month's fee after payment
   try {
     await FeeService.generateNextMonthFee(studentId);
@@ -718,7 +813,7 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
     console.warn(`Failed to generate next month fee for student ${studentId}: ${error.message}`);
     // Don't fail the payment if fee generation fails
   }
-  
+
   return res.status(201).json({
     success: true,
     data: createdFees,
@@ -730,36 +825,36 @@ router.post('/bulk-payment', asyncHandler(async (req: Request, res: Response<Api
 // Helper function to create a fee record
 async function createFeeRecord(data: any, userId: string): Promise<IFeeRecord> {
   const { studentId, feeMonth, dueDate, status, feeAmount, paidAmount, paymentDate, paymentMethod, transactionId, remarks } = data;
-  
+
   // Validation
   if (!studentId || !feeMonth || !dueDate || !feeAmount) {
     throw new Error('Student ID, fee month, due date, and fee amount are required');
   }
-  
+
   // Get student details
   const student = await Student.findById(studentId);
   if (!student) {
     throw new Error('Student not found');
   }
-  
+
   // Check if fee record already exists for this student and month
   const existingFee = await FeeRecord.findOne({ studentId, feeMonth });
   if (existingFee) {
     throw new Error(`Fee record already exists for ${feeMonth}`);
   }
-  
+
   // Validate transaction ID if provided
   if (transactionId) {
     const duplicateTransaction = await FeeRecord.findOne({
       transactionId,
       studentId: { $ne: studentId }
     });
-    
+
     if (duplicateTransaction) {
       throw new Error('Transaction ID is already used by another student');
     }
   }
-  
+
   // Create fee record (status is computed dynamically)
   const fee = await FeeRecord.create({
     studentId,
@@ -776,7 +871,7 @@ async function createFeeRecord(data: any, userId: string): Promise<IFeeRecord> {
     remarks,
     updatedBy: userId
   });
-  
+
   return fee;
 }
 
@@ -784,7 +879,7 @@ async function createFeeRecord(data: any, userId: string): Promise<IFeeRecord> {
 router.post('/generate-pending/:studentId', asyncHandler(async (req: Request, res: Response<ApiResponse<IFeeRecord[]>>) => {
   const { studentId } = req.params;
   const { startMonth, monthsToGenerate } = req.body;
-  
+
   if (!studentId) {
     return res.status(400).json({
       success: false,
@@ -792,7 +887,7 @@ router.post('/generate-pending/:studentId', asyncHandler(async (req: Request, re
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Validate student exists
   const student = await Student.findById(studentId);
   if (!student) {
@@ -802,14 +897,14 @@ router.post('/generate-pending/:studentId', asyncHandler(async (req: Request, re
       timestamp: new Date().toISOString()
     });
   }
-  
+
   try {
     const fees = await FeeService.generateUpcomingFeesForStudent(
       studentId,
       startMonth ? new Date(startMonth) : undefined,
       monthsToGenerate || 3
     );
-    
+
     return res.status(201).json({
       success: true,
       data: fees,
@@ -828,12 +923,12 @@ router.post('/generate-pending/:studentId', asyncHandler(async (req: Request, re
 // POST /api/fees/generate-pending-all - Generate pending fees for all students without fee records
 router.post('/generate-pending-all', asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { monthsToGenerate } = req.body;
-  
+
   try {
     const results = await FeeService.generateUpcomingFeesForAllStudents(
       monthsToGenerate || 3
     );
-    
+
     return res.status(201).json({
       success: true,
       data: results,
@@ -854,19 +949,19 @@ router.get('/students-overdue-status', asyncHandler(async (req: Request, res: Re
   try {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
-    
+
     // Get all students with overdue fees
-    const overdueRecords = await FeeRecord.find({ 
+    const overdueRecords = await FeeRecord.find({
       paymentDate: null,
       dueDate: { $lt: now }
     }).distinct('studentId');
-    
+
     // Create a map of student IDs with overdue fees
     const overdueMap: Record<string, boolean> = {};
     overdueRecords.forEach((studentId: any) => {
       overdueMap[studentId.toString()] = true;
     });
-    
+
     return res.json({
       success: true,
       data: overdueMap,
@@ -885,7 +980,7 @@ router.get('/students-overdue-status', asyncHandler(async (req: Request, res: Re
 // GET /api/fees/payable/:studentId - Get payable fees for a student (overdue + one next pending)
 router.get('/payable/:studentId', asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { studentId } = req.params;
-  
+
   if (!studentId) {
     return res.status(400).json({
       success: false,
@@ -893,10 +988,10 @@ router.get('/payable/:studentId', asyncHandler(async (req: Request, res: Respons
       timestamp: new Date().toISOString()
     });
   }
-  
+
   try {
     const payableFees = await FeeService.getPayableFees(studentId);
-    
+
     return res.json({
       success: true,
       data: payableFees,
@@ -917,21 +1012,21 @@ const normalizePaymentStatus = (status: any): 'upcoming' | 'paid' | 'overdue' | 
   if (!status || status === 'nan' || String(status).toLowerCase() === 'nan' || String(status).trim() === '') {
     return 'upcoming';
   }
-  
+
   const statusStr = String(status).toLowerCase().trim();
-  
+
   if (statusStr === 'paid' || statusStr === 'Paid' || statusStr === 'PAID') {
     return 'paid';
   }
-  
+
   if (statusStr === 'discontinued' || statusStr === 'DISCONTINUED') {
     return 'discontinued';
   }
-  
+
   if (statusStr === 'ab' || statusStr === 'AB') {
     return 'upcoming'; // AB (absent) treated as upcoming
   }
-  
+
   return 'upcoming';
 };
 
@@ -1071,7 +1166,7 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
       try {
         // Get student identifier (phone number)
         const studentIdentifier = row['student_identifier'];
-        
+
         // Clean and validate phone number
         const cleanedPhone = cleanPhoneNumber(studentIdentifier);
         if (!cleanedPhone) {
@@ -1107,10 +1202,10 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
             { status: row['Payment Status.2'], paymentDate: row['Payment date.2'] },
             { status: row['Payment Status.3'], paymentDate: row['Payment date.3'] }
           ];
-          
+
           let totalPaidAmount = 0;
           let latestPaymentDate: Date | null = null;
-          
+
           // Get course configuration for fee amount
           const stageForCredit = student.stage || student.skillCategory;
           if (stageForCredit) {
@@ -1119,7 +1214,7 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
               const studentLevelForCredit = student.level || student.skillLevel || 1;
               const levelConfigForCredit = courseForCredit.levels.find((l: any) => l.levelNumber === studentLevelForCredit) || courseForCredit.levels[0];
               const feeAmountForCredit = levelConfigForCredit?.feeAmount || 0;
-              
+
               for (const cycle of cycles) {
                 const status = normalizePaymentStatus(cycle.status);
                 if (status === 'paid') {
@@ -1130,7 +1225,7 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
                   }
                 }
               }
-              
+
               if (totalPaidAmount > 0) {
                 // Create credit for the student
                 await StudentCreditService.addCredit({
@@ -1174,9 +1269,9 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
           continue;
         }
 
-        const course = await Course.findOne({ 
-          courseName: stage, 
-          isActive: true 
+        const course = await Course.findOne({
+          courseName: stage,
+          isActive: true
         });
 
         if (!course || course.levels.length === 0) {
@@ -1192,7 +1287,7 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
 
         const studentLevel = student.level || student.skillLevel || 1;
         const levelConfig = course.levels.find((l: any) => l.levelNumber === studentLevel) || course.levels[0];
-        
+
         if (!levelConfig) {
           results.skipped++;
           results.errors.push({
@@ -1227,7 +1322,7 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
 
           // Normalize status
           const status = normalizePaymentStatus(cycle.status);
-          
+
           // Check for DISCONTINUED status
           if (status === 'discontinued') {
             discontinuedStudent = true;
@@ -1273,7 +1368,7 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
 
           // Determine paid amount
           let paidAmount = 0;
-          
+
           if (status === 'paid') {
             paidAmount = feeAmount;
           }

@@ -7,9 +7,9 @@ import Batch from '../models/Batch.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ApiResponse, PaginatedResponse, IStudent } from '../types/index.js';
-import { 
-  cleanPhoneNumber, 
-  parseExcelDate, 
+import {
+  cleanPhoneNumber,
+  parseExcelDate,
   generateCombinedSkill,
   isValidEmail,
   parseLevelField,
@@ -57,11 +57,11 @@ router.get('/', asyncHandler(async (req: Request, res: Response<ApiResponse<Pagi
   // Build options object, only including filters if they're defined
   const baseOptions = { page, limit, sortBy, sortOrder };
   const optionsWithFilters: any = { ...baseOptions };
-  
+
   if (stage) {
     optionsWithFilters.stage = stage;
   }
-  
+
   if (isActive !== undefined && isActive !== 'all') {
     optionsWithFilters.isActive = isActive === 'true';
   }
@@ -97,7 +97,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response<ApiResponse<Pagi
 // GET /api/students/stats - Get student statistics
 router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const stats = await DatabaseService.getStudentStats();
-  
+
   return res.json({
     success: true,
     data: stats,
@@ -109,7 +109,7 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response<ApiResponse
 // GET /api/students/email/:email - Get student by email (must come before /:id)
 router.get('/email/:email', asyncHandler(async (req: Request, res: Response<ApiResponse<IStudent>>) => {
   const { email } = req.params;
-  
+
   if (!email) {
     return res.status(400).json({
       success: false,
@@ -117,9 +117,9 @@ router.get('/email/:email', asyncHandler(async (req: Request, res: Response<ApiR
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const student = await DatabaseService.getStudentByEmail(email);
-  
+
   if (!student) {
     return res.status(404).json({
       success: false,
@@ -276,11 +276,11 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
         const dob = row['Date of Birth'] || row['dob'];
         const address = row['Address'];
         const referredBy = row['Referred By'];
-        
+
         // VALIDATION: Must have at least email OR phone (not necessarily both)
         const cleanedPhone = cleanPhoneNumber(contactNumber);
         const cleanedEmail = email && isValidEmail(email) ? String(email).trim().toLowerCase() : null;
-        
+
         if (!cleanedPhone && !cleanedEmail) {
           results.skipped++;
           results.errors.push({
@@ -290,7 +290,7 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
           });
           continue;
         }
-        
+
         // Skip if name is missing
         if (!name || name === 'nan' || String(name).trim() === '') {
           results.skipped++;
@@ -301,13 +301,13 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
           });
           continue;
         }
-        
+
         // Parse level field (B1, B2, I1, etc.)
         const levelInfo = parseLevelField(level);
-        
+
         // Parse status to determine isActive
         const isActive = parseStatus(status);
-        
+
         // Look up batch by batchCode if provided
         let matchedBatch: any = null;
         if (batchCode && batchCode !== 'nan' && String(batchCode).trim() !== '') {
@@ -327,47 +327,47 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
           batch: matchedBatch ? matchedBatch.batchName : 'Not Assigned',
           batchId: matchedBatch ? matchedBatch._id : undefined
         };
-        
+
         // Add optional fields if present
         if (parentName && parentName !== 'nan') {
           studentData.parentName = String(parentName).trim();
         }
-        
+
         if (dob && dob !== 'nan') {
           studentData.dob = String(dob).trim();
         }
-        
+
         if (address && address !== 'nan') {
           studentData.address = String(address).trim();
         }
-        
+
         if (referredBy && referredBy !== 'nan') {
           studentData.referredBy = String(referredBy).trim();
         }
-        
+
         // Add level information if parsed
         if (levelInfo.stage) {
           // Set both new and deprecated fields for compatibility during migration
           studentData.stage = levelInfo.stage;
           studentData.skillCategory = levelInfo.stage as any;
         }
-        
+
         if (levelInfo.level) {
           // Set both new and deprecated fields for compatibility during migration
           studentData.level = levelInfo.level;
           studentData.skillLevel = levelInfo.level;
         }
-        
+
         // Auto-generate combinedSkill using the utility function
         if (levelInfo.stage && levelInfo.level) {
           studentData.combinedSkill = generateCombinedSkill(levelInfo.stage, levelInfo.level);
         }
-        
+
         // Parse enrollment date - handle Excel date formats
         if (studentStartDate && studentStartDate !== 'nan') {
           try {
             let parsedDate: Date | null = null;
-            
+
             // Case 1: Already a Date object from xlsx
             if (studentStartDate instanceof Date) {
               parsedDate = studentStartDate;
@@ -394,7 +394,7 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
                 parsedDate = new Date(dateStr);
               }
             }
-            
+
             // Validate and set if we got a valid date
             if (parsedDate && !isNaN(parsedDate.getTime())) {
               studentData.enrollmentDate = parsedDate;
@@ -407,18 +407,18 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
         // Create student (this will also create user account via DatabaseService)
         const student = await DatabaseService.createStudent(studentData);
         results.successful++;
-        
+
         // Only generate fee records if student has a batch assigned
         // For bulk upload without batch, no fees are created (payments become credits)
         if (student.batchId) {
           try {
             const batch = await Batch.findById(student.batchId);
-            
+
             if (batch) {
               // Set fee cycle start date to batch start date
               student.feeCycleStartDate = batch.startDate;
               await student.save();
-              
+
               const stage = student.stage || student.skillCategory;
               if (stage) {
                 await FeeService.createInitialOverdueFeesForStudent(
@@ -473,7 +473,7 @@ router.post('/bulk-upload', upload.single('file'), asyncHandler(async (req: Requ
 // GET /api/students/:id - Get student by ID
 router.get('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<IStudent>>) => {
   const { id } = req.params;
-  
+
   if (!id) {
     return res.status(400).json({
       success: false,
@@ -481,9 +481,9 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const student = await DatabaseService.getStudentById(id);
-  
+
   if (!student) {
     return res.status(404).json({
       success: false,
@@ -503,7 +503,7 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
 // POST /api/students - Create new student
 router.post('/', asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const studentData = req.body;
-  
+
   // Basic validation - must have name and at least email OR phone
   if (!studentData.studentName) {
     return res.status(400).json({
@@ -512,7 +512,7 @@ router.post('/', asyncHandler(async (req: Request, res: Response<ApiResponse>) =
       timestamp: new Date().toISOString()
     });
   }
-  
+
   if (!studentData.email && !studentData.phone) {
     return res.status(400).json({
       success: false,
@@ -528,17 +528,17 @@ router.post('/', asyncHandler(async (req: Request, res: Response<ApiResponse>) =
   }
 
   const student = await DatabaseService.createStudent(studentData);
-  
+
   // Only generate fee records if student has a batch assigned
   let initialFees: any[] = [];
   let feeCycleStartDate: Date | null = null;
-  
+
   if (studentData.batchId) {
     try {
       // Import Batch model to get batch start date
       const Batch = (await import('../models/Batch.js')).default;
       const batch = await Batch.findById(studentData.batchId);
-      
+
       if (batch) {
         // Set fee cycle start date to batch start date
         feeCycleStartDate = batch.startDate;
@@ -546,7 +546,7 @@ router.post('/', asyncHandler(async (req: Request, res: Response<ApiResponse>) =
         student.batchId = batch._id as any;
         student.batch = batch.batchName;
         await student.save();
-        
+
         const stage = student.stage || student.skillCategory;
         if (stage && feeCycleStartDate) {
           initialFees = await FeeService.createInitialOverdueFeesForStudent(
@@ -562,7 +562,7 @@ router.post('/', asyncHandler(async (req: Request, res: Response<ApiResponse>) =
     }
   }
   // If no batch assigned, no fee records are created. Payments will become credits.
-  
+
   return res.status(201).json({
     success: true,
     data: {
@@ -686,7 +686,12 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
 
       return res.json({
         success: true,
-        data: updatedStudent!,
+        data: {
+          ...(typeof (updatedStudent as any)?.toObject === 'function' ? (updatedStudent as any).toObject() : updatedStudent!),
+          ...(transitionResult.rateMismatchWarning && transitionResult.rateMismatchWarning.length > 0 && {
+            rateMismatchWarning: transitionResult.rateMismatchWarning
+          })
+        },
         message,
         timestamp: new Date().toISOString()
       });
@@ -698,15 +703,15 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
       });
     }
   }
-  
+
   // Auto-generate combinedSkill from stage + level
   if (updateData.stage && updateData.level) {
     const stageCapitalized = updateData.stage.charAt(0).toUpperCase() + updateData.stage.slice(1);
     updateData.combinedSkill = `${stageCapitalized} Level - ${updateData.level}`;
   }
-  
+
   const student = await DatabaseService.updateStudent(id, updateData);
-  
+
   if (!student) {
     return res.status(404).json({
       success: false,
@@ -726,7 +731,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
 // PATCH /api/students/:id/toggle-active - Toggle student active/inactive status
 router.patch('/:id/toggle-active', asyncHandler(async (req: Request, res: Response<ApiResponse<IStudent>>) => {
   const { id } = req.params;
-  
+
   if (!id) {
     return res.status(400).json({
       success: false,
@@ -734,9 +739,9 @@ router.patch('/:id/toggle-active', asyncHandler(async (req: Request, res: Respon
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const student = await DatabaseService.toggleStudentActiveStatus(id);
-  
+
   if (!student) {
     return res.status(404).json({
       success: false,
@@ -757,7 +762,7 @@ router.patch('/:id/toggle-active', asyncHandler(async (req: Request, res: Respon
 // DELETE /api/students/:id - Delete student
 router.delete('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { id } = req.params;
-  
+
   if (!id) {
     return res.status(400).json({
       success: false,
@@ -765,9 +770,9 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response<ApiRespons
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const deleted = await DatabaseService.deleteStudent(id);
-  
+
   if (!deleted) {
     return res.status(404).json({
       success: false,
@@ -787,7 +792,7 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response<ApiRespons
 // GET /api/students/:id/fees - Get all fee records for a specific student
 router.get('/:id/fees', asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { id } = req.params;
-  
+
   if (!id) {
     return res.status(400).json({
       success: false,
@@ -795,7 +800,7 @@ router.get('/:id/fees', asyncHandler(async (req: Request, res: Response<ApiRespo
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Validate student exists
   const student = await DatabaseService.getStudentById(id);
   if (!student) {
@@ -805,10 +810,10 @@ router.get('/:id/fees', asyncHandler(async (req: Request, res: Response<ApiRespo
       timestamp: new Date().toISOString()
     });
   }
-  
+
   try {
     const fees = await FeeService.getStudentFees(id);
-    
+
     return res.json({
       success: true,
       data: fees,

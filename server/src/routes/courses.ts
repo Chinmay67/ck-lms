@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import Course from '../models/Course.js';
 import Student from '../models/Student.js';
+import FeeRecord from '../models/FeeRecord.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ApiResponse, ICourse } from '../types/index.js';
@@ -13,14 +14,14 @@ router.use(authenticate);
 // GET /api/courses - Get all courses (public for dropdown menus)
 router.get('/', asyncHandler(async (req: Request, res: Response<ApiResponse<ICourse[]>>) => {
   const { activeOnly } = req.query;
-  
+
   const query: any = {};
   if (activeOnly === 'true') {
     query.isActive = true;
   }
-  
+
   const courses = await Course.find(query).sort({ displayOrder: 1, courseName: 1 });
-  
+
   return res.json({
     success: true,
     data: courses,
@@ -32,7 +33,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response<ApiResponse<ICou
 // GET /api/courses/:id - Get specific course with levels
 router.get('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<ICourse>>) => {
   const { id } = req.params;
-  
+
   if (!id) {
     return res.status(400).json({
       success: false,
@@ -40,9 +41,9 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const course = await Course.findById(id);
-  
+
   if (!course) {
     return res.status(404).json({
       success: false,
@@ -62,7 +63,7 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response<ApiResponse<I
 // GET /api/courses/name/:courseName - Get course by name
 router.get('/name/:courseName', asyncHandler(async (req: Request, res: Response<ApiResponse<ICourse>>) => {
   const { courseName } = req.params;
-  
+
   if (!courseName) {
     return res.status(400).json({
       success: false,
@@ -70,9 +71,9 @@ router.get('/name/:courseName', asyncHandler(async (req: Request, res: Response<
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const course = await Course.findOne({ courseName: courseName.toLowerCase() });
-  
+
   if (!course) {
     return res.status(404).json({
       success: false,
@@ -93,7 +94,7 @@ router.get('/name/:courseName', asyncHandler(async (req: Request, res: Response<
 router.post('/', authorize('superadmin'), asyncHandler(async (req: Request, res: Response<ApiResponse<ICourse>>) => {
   const { courseName, displayName, description, isActive, displayOrder, levels } = req.body;
   const userId = (req as any).user.id;
-  
+
   // Validation
   if (!courseName || !displayName) {
     return res.status(400).json({
@@ -102,7 +103,7 @@ router.post('/', authorize('superadmin'), asyncHandler(async (req: Request, res:
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Check if course already exists
   const existingCourse = await Course.findOne({ courseName: courseName.toLowerCase() });
   if (existingCourse) {
@@ -112,7 +113,7 @@ router.post('/', authorize('superadmin'), asyncHandler(async (req: Request, res:
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Validate levels if provided
   if (levels && levels.length > 0) {
     if (levels.length > 5) {
@@ -122,7 +123,7 @@ router.post('/', authorize('superadmin'), asyncHandler(async (req: Request, res:
         timestamp: new Date().toISOString()
       });
     }
-    
+
     // Check for sequential levels
     const levelNumbers = levels.map((l: any) => l.levelNumber).sort((a: number, b: number) => a - b);
     for (let i = 0; i < levelNumbers.length; i++) {
@@ -135,7 +136,7 @@ router.post('/', authorize('superadmin'), asyncHandler(async (req: Request, res:
       }
     }
   }
-  
+
   const course = await Course.create({
     courseName: courseName.toLowerCase(),
     displayName,
@@ -145,7 +146,7 @@ router.post('/', authorize('superadmin'), asyncHandler(async (req: Request, res:
     levels: levels || [],
     createdBy: userId
   });
-  
+
   return res.status(201).json({
     success: true,
     data: course as any,
@@ -159,7 +160,7 @@ router.put('/:id', authorize('superadmin'), asyncHandler(async (req: Request, re
   const { id } = req.params;
   const { displayName, description, isActive, displayOrder } = req.body;
   const userId = (req as any).user.id;
-  
+
   if (!id) {
     return res.status(400).json({
       success: false,
@@ -167,16 +168,16 @@ router.put('/:id', authorize('superadmin'), asyncHandler(async (req: Request, re
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const updateData: any = { createdBy: userId };
-  
+
   if (displayName !== undefined) updateData.displayName = displayName;
   if (description !== undefined) updateData.description = description;
   if (isActive !== undefined) updateData.isActive = isActive;
   if (displayOrder !== undefined) updateData.displayOrder = displayOrder;
-  
+
   const course = await Course.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
-  
+
   if (!course) {
     return res.status(404).json({
       success: false,
@@ -196,7 +197,7 @@ router.put('/:id', authorize('superadmin'), asyncHandler(async (req: Request, re
 // DELETE /api/courses/:id - Delete course (superadmin only)
 router.delete('/:id', authorize('superadmin'), asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { id } = req.params;
-  
+
   if (!id) {
     return res.status(400).json({
       success: false,
@@ -204,7 +205,7 @@ router.delete('/:id', authorize('superadmin'), asyncHandler(async (req: Request,
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Check if any students are enrolled in this course
   const course = await Course.findById(id);
   if (!course) {
@@ -214,7 +215,7 @@ router.delete('/:id', authorize('superadmin'), asyncHandler(async (req: Request,
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const studentCount = await Student.countDocuments({ stage: course.courseName });
   if (studentCount > 0) {
     return res.status(400).json({
@@ -223,7 +224,7 @@ router.delete('/:id', authorize('superadmin'), asyncHandler(async (req: Request,
       timestamp: new Date().toISOString()
     });
   }
-  
+
   await Course.findByIdAndDelete(id);
 
   return res.json({
@@ -238,7 +239,7 @@ router.post('/:id/levels', authorize('superadmin'), asyncHandler(async (req: Req
   const { id } = req.params;
   const { levelNumber, feeAmount, durationMonths, approximateHours, description } = req.body;
   const userId = (req as any).user.id;
-  
+
   if (!id) {
     return res.status(400).json({
       success: false,
@@ -246,7 +247,7 @@ router.post('/:id/levels', authorize('superadmin'), asyncHandler(async (req: Req
       timestamp: new Date().toISOString()
     });
   }
-  
+
   if (!levelNumber || feeAmount === undefined) {
     return res.status(400).json({
       success: false,
@@ -254,7 +255,7 @@ router.post('/:id/levels', authorize('superadmin'), asyncHandler(async (req: Req
       timestamp: new Date().toISOString()
     });
   }
-  
+
   if (levelNumber < 1 || levelNumber > 5) {
     return res.status(400).json({
       success: false,
@@ -262,7 +263,7 @@ router.post('/:id/levels', authorize('superadmin'), asyncHandler(async (req: Req
       timestamp: new Date().toISOString()
     });
   }
-  
+
   if (feeAmount < 0) {
     return res.status(400).json({
       success: false,
@@ -270,7 +271,7 @@ router.post('/:id/levels', authorize('superadmin'), asyncHandler(async (req: Req
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const course = await Course.findById(id);
   if (!course) {
     return res.status(404).json({
@@ -279,7 +280,7 @@ router.post('/:id/levels', authorize('superadmin'), asyncHandler(async (req: Req
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Check if level already exists
   if (course.hasLevel(levelNumber)) {
     return res.status(400).json({
@@ -288,7 +289,7 @@ router.post('/:id/levels', authorize('superadmin'), asyncHandler(async (req: Req
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Check if adding this level would exceed 5 levels
   if (course.levels.length >= 5) {
     return res.status(400).json({
@@ -297,7 +298,7 @@ router.post('/:id/levels', authorize('superadmin'), asyncHandler(async (req: Req
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Add the new level
   course.levels.push({
     levelNumber,
@@ -306,12 +307,12 @@ router.post('/:id/levels', authorize('superadmin'), asyncHandler(async (req: Req
     approximateHours: approximateHours || 0,
     description
   });
-  
+
   // Sort levels by levelNumber
   course.levels.sort((a: any, b: any) => a.levelNumber - b.levelNumber);
-  
+
   await course.save();
-  
+
   return res.json({
     success: true,
     data: course as any,
@@ -325,7 +326,7 @@ router.put('/:id/levels/:levelNumber', authorize('superadmin'), asyncHandler(asy
   const { id, levelNumber } = req.params;
   const { feeAmount, durationMonths, approximateHours, description } = req.body;
   const userId = (req as any).user.id;
-  
+
   if (!id || !levelNumber) {
     return res.status(400).json({
       success: false,
@@ -333,9 +334,9 @@ router.put('/:id/levels/:levelNumber', authorize('superadmin'), asyncHandler(asy
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const levelNum = parseInt(levelNumber);
-  
+
   const course = await Course.findById(id);
   if (!course) {
     return res.status(404).json({
@@ -344,7 +345,7 @@ router.put('/:id/levels/:levelNumber', authorize('superadmin'), asyncHandler(asy
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const levelIndex = course.levels.findIndex((l: any) => l.levelNumber === levelNum);
   if (levelIndex === -1) {
     return res.status(404).json({
@@ -353,7 +354,7 @@ router.put('/:id/levels/:levelNumber', authorize('superadmin'), asyncHandler(asy
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const level = course.levels[levelIndex];
   if (!level) {
     return res.status(404).json({
@@ -362,7 +363,7 @@ router.put('/:id/levels/:levelNumber', authorize('superadmin'), asyncHandler(asy
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Update level fields
   if (feeAmount !== undefined) {
     if (feeAmount < 0) {
@@ -374,7 +375,7 @@ router.put('/:id/levels/:levelNumber', authorize('superadmin'), asyncHandler(asy
     }
     level.feeAmount = feeAmount;
   }
-  
+
   if (durationMonths !== undefined) {
     if (durationMonths < 1) {
       return res.status(400).json({
@@ -385,21 +386,48 @@ router.put('/:id/levels/:levelNumber', authorize('superadmin'), asyncHandler(asy
     }
     level.durationMonths = durationMonths;
   }
-  
+
   if (approximateHours !== undefined) {
     level.approximateHours = approximateHours;
   }
-  
+
   if (description !== undefined) {
     level.description = description;
   }
-  
+
   await course.save();
-  
+
+  // Propagate fee changes to unpaid FeeRecords
+  let propagatedCount = 0;
+  if (feeAmount !== undefined) {
+    // Update unpaid records (paidAmount === 0) for this stage/level
+    // For records with discounts, recalculate feeAmount preserving the discount %
+    const propagateResult = await FeeRecord.updateMany(
+      {
+        stage: course.courseName,
+        level: levelNum,
+        paidAmount: 0
+      },
+      [{
+        $set: {
+          originalFeeAmount: feeAmount,
+          feeAmount: {
+            $cond: {
+              if: { $gt: [{ $ifNull: ['$discountPercentage', 0] }, 0] },
+              then: { $round: [{ $multiply: [feeAmount, { $subtract: [1, { $divide: ['$discountPercentage', 100] }] }] }, 0] },
+              else: feeAmount
+            }
+          }
+        }
+      }]
+    );
+    propagatedCount = propagateResult.modifiedCount || 0;
+  }
+
   return res.json({
     success: true,
     data: course as any,
-    message: 'Level updated successfully',
+    message: `Level updated successfully${propagatedCount > 0 ? `. Fee updated on ${propagatedCount} unpaid record(s).` : ''}`,
     timestamp: new Date().toISOString()
   });
 }));
@@ -407,7 +435,7 @@ router.put('/:id/levels/:levelNumber', authorize('superadmin'), asyncHandler(asy
 // DELETE /api/courses/:id/levels/:levelNumber - Remove level (superadmin only)
 router.delete('/:id/levels/:levelNumber', authorize('superadmin'), asyncHandler(async (req: Request, res: Response<ApiResponse<ICourse>>) => {
   const { id, levelNumber } = req.params;
-  
+
   if (!id || !levelNumber) {
     return res.status(400).json({
       success: false,
@@ -415,9 +443,9 @@ router.delete('/:id/levels/:levelNumber', authorize('superadmin'), asyncHandler(
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const levelNum = parseInt(levelNumber);
-  
+
   const course = await Course.findById(id);
   if (!course) {
     return res.status(404).json({
@@ -426,13 +454,13 @@ router.delete('/:id/levels/:levelNumber', authorize('superadmin'), asyncHandler(
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Check if any students are at this level
-  const studentCount = await Student.countDocuments({ 
+  const studentCount = await Student.countDocuments({
     stage: course.courseName,
     level: levelNum
   });
-  
+
   if (studentCount > 0) {
     return res.status(400).json({
       success: false,
@@ -440,7 +468,7 @@ router.delete('/:id/levels/:levelNumber', authorize('superadmin'), asyncHandler(
       timestamp: new Date().toISOString()
     });
   }
-  
+
   const levelIndex = course.levels.findIndex((l: any) => l.levelNumber === levelNum);
   if (levelIndex === -1) {
     return res.status(404).json({
@@ -449,12 +477,12 @@ router.delete('/:id/levels/:levelNumber', authorize('superadmin'), asyncHandler(
       timestamp: new Date().toISOString()
     });
   }
-  
+
   // Remove the level
   course.levels.splice(levelIndex, 1);
-  
+
   await course.save();
-  
+
   return res.json({
     success: true,
     data: course as any,
