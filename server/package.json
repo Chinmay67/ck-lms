@@ -10,6 +10,7 @@
     "ingest": "tsx scripts/IngestStudentsFromExcel.ts",
     "migrate:shared-contacts": "tsx scripts/MigrateToSharedContacts.ts",
     "create-superadmin": "tsx scripts/CreateSuperAdmin.ts",
+    "create-admin": "tsx src/scripts/create_admin_user.ts",
     "backfill-filled-seats": "tsx scripts/BackfillFilledSeats.ts --apply",
     "backfill-filled-seats:dry-run": "tsx scripts/BackfillFilledSeats.ts",
     "generate-fees": "tsx scripts/GenerateMissingFeeRecords.ts",

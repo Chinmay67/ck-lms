@@ -19,13 +19,14 @@ import adminLeadsRoutes from './routes/admin/leads.js';
 adminStudentsRoutes.use('/:id/enrollments', adminEnrollmentsRouter);
 
 const app = express();
+const allowedCorsOrigin = config.nodeEnv === 'production'
+  ? config.ProdUrl
+  : config.DevUrl;
 
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? config.ProdUrl // Replace with actual frontend domain
-    : config.DevUrl, // Common dev ports
+  origin: allowedCorsOrigin,
   credentials: true
 }));
 
@@ -82,6 +83,7 @@ async function startServer() {
     app.listen(config.port, () => {
       console.log(`🚀 Server running on port ${config.port}`);
       console.log(`📱 Environment: ${config.nodeEnv}`);
+      console.log(`🔐 CORS allowed origin: ${allowedCorsOrigin || 'not configured'}`);
       console.log(`🌐 Health check: http://localhost:${config.port}/health`);
     });
   } catch (error) {
