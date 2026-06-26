@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { FaInbox, FaSearch, FaUsers, FaExclamationTriangle } from 'react-icons/fa';
+import { Inbox, Search, Users, AlertTriangle } from 'lucide-react';
 
 interface EmptyStateProps {
   icon?: 'inbox' | 'search' | 'users' | 'warning' | ReactNode;
@@ -19,28 +19,28 @@ const EmptyState = ({
   const getIcon = () => {
     if (typeof icon === 'object') return icon;
     
-    const iconClass = "w-16 h-16 text-primary-300 mb-4";
+    const iconClass = "w-10 h-10 text-primary-300 mb-3";
     switch (icon) {
       case 'search':
-        return <FaSearch className={iconClass} />;
+        return <Search className={iconClass} />
       case 'users':
-        return <FaUsers className={iconClass} />;
+        return <Users className={iconClass} />
       case 'warning':
-        return <FaExclamationTriangle className={iconClass} />;
+        return <AlertTriangle className={iconClass} />
       default:
-        return <FaInbox className={iconClass} />;
+        return <Inbox className={iconClass} />
     }
   };
 
   return (
-    <div className={`text-center py-12 px-4 ${className}`}>
+    <div className={`text-center py-10 px-4 ${className}`}>
       <div className="flex flex-col items-center max-w-md mx-auto">
         {getIcon()}
-        <h3 className="text-xl font-semibold text-text-primary mb-2">
+        <h3 className="text-base font-semibold text-text-primary mb-1.5">
           {title}
         </h3>
         {description && (
-          <p className="text-text-secondary mb-6">
+          <p className="text-sm text-text-secondary mb-5">
             {description}
           </p>
         )}

@@ -11,15 +11,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.2.8",
     "@tailwindcss/postcss": "^4.1.17",
     "@types/axios": "^0.9.36",
     "autoprefixer": "^10.4.22",
     "axios": "^1.13.2",
+    "lucide-react": "^1.17.0",
     "postcss": "^8.5.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-hot-toast": "^2.6.0",
     "react-icons": "^5.5.0",
+    "react-router-dom": "^7.17.0",
     "tailwindcss": "^4.1.17"
   },
   "devDependencies": {
@@ -28,12 +31,16 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^5.1.0",
+    "baseline-browser-mapping": "^2.10.40",
+    "browserslist": "^4.28.4",
+    "caniuse-lite": "^1.0.30001799",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.3",
+    "update-browserslist-db": "^1.2.3",
     "vite": "^7.2.2"
   }
 }

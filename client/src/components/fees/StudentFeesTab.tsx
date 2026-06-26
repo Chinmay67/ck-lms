@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import type { Student, FeeRecord, StudentCredit, CreditSummary } from '../../types/student';
-import type { Course } from '../../types/course';
-import { FeesAPI, CourseAPI, CreditAPI } from '../../services/api';
+import type { Student, FeeRecord, CreditSummary } from '../../types/student';
+import { FeesAPI, CreditAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import FeePaymentModal from './FeePaymentModal';
 import AddCreditModal from './AddCreditModal';
@@ -13,7 +12,6 @@ interface StudentFeesTabProps {
 
 const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
   const [fees, setFees] = useState<FeeRecord[]>([]);
-  const [_course, setCourse] = useState<Course | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -24,7 +22,7 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
     overdue: FeeRecord[];
     nextUpcoming: FeeRecord | null;
   }>({ overdue: [], nextUpcoming: null });
-  const [credits, setCredits] = useState<StudentCredit[]>([]);
+  const [credits, setCredits] = useState<any[]>([]);
   const [creditSummary, setCreditSummary] = useState<CreditSummary | null>(null);
 
   useEffect(() => {
@@ -37,7 +35,6 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
     
     fetchStudentFees(studentId);
     fetchPayableFees(studentId);
-    fetchFeeConfig();
     fetchCredits(studentId);
   }, [student]);
 
@@ -94,38 +91,23 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
     }
   };
 
-  const fetchFeeConfig = async () => {
-    try {
-      const stage = student.stage || student.skillCategory;
-      if (!stage) {
-        console.warn('No stage found for student:', (student as any)?.id || student._id);
-        return;
-      }
-      
-      const response = await CourseAPI.getCourseByName(stage);
-      if (response.success && response.data) {
-        setCourse(response.data);
-      }
-    } catch (error: any) {
-      console.error('Failed to fetch course config:', error);
-      // Don't show error for course config - it's optional for viewing fees
-    }
-  };
-
   const fetchCredits = async (studentId: string) => {
     try {
       const response = await CreditAPI.getStudentCredits(studentId);
       if (response.success && response.data) {
-        setCredits(response.data);
-      }
-
-      const summaryResponse = await CreditAPI.getCreditSummary(studentId);
-      if (summaryResponse.success && summaryResponse.data) {
-        setCreditSummary(summaryResponse.data);
+        setCredits(response.data.credits ?? []);
+        setCreditSummary({
+          totalCredits: (response.data.credits ?? []).length,
+          activeCredits: (response.data.credits ?? []).length,
+          usedCredits: 0,
+          expiredCredits: 0,
+          totalPaid: response.data.creditBalance ?? 0,
+          totalUsed: 0,
+          totalRemaining: response.data.creditBalance ?? 0,
+        });
       }
     } catch (error: any) {
       console.error('Failed to fetch credits:', error);
-      // Don't show error for credits - it's optional
     }
   };
 
@@ -161,15 +143,15 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'paid':
-        return 'bg-green-100 text-green-800';
+        return 'bg-accent-600/15 text-accent-400';
       case 'upcoming':
         return 'bg-yellow-100 text-yellow-800';
       case 'overdue':
         return 'bg-red-100 text-red-800';
       case 'partially_paid':
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-primary-600/15 text-primary-300';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-surface-hover text-text-primary';
     }
   };
 
@@ -190,17 +172,16 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
         </div>
-        <p className="text-red-600 font-medium mb-2">Error Loading Fees</p>
-        <p className="text-gray-500 text-sm mb-4">{error}</p>
+        <p className="text-red-400 font-medium mb-2">Error Loading Fees</p>
+        <p className="text-text-tertiary text-sm mb-4">{error}</p>
         <button
           onClick={() => {
             const studentId = (student as any)?.id || student?._id;
             if (studentId) {
               fetchStudentFees(studentId);
-              fetchFeeConfig();
             }
           }}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-500 transition-colors"
         >
           Retry
         </button>
@@ -212,13 +193,13 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
   if (!(student as any)?.id && !student?._id) {
     return (
       <div className="flex flex-col items-center justify-center h-64">
-        <div className="text-gray-400 mb-3">
+        <div className="text-text-tertiary mb-3">
           <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
           </svg>
         </div>
-        <p className="text-gray-600 font-medium mb-2">No Student Selected</p>
-        <p className="text-gray-500 text-sm">Please select a student to view fees</p>
+        <p className="text-text-secondary font-medium mb-2">No Student Selected</p>
+        <p className="text-text-tertiary text-sm">Please select a student to view fees</p>
       </div>
     );
   }
@@ -227,7 +208,7 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
     return (
       <div className="flex flex-col items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <p className="text-gray-600 mt-3">Loading fee information...</p>
+        <p className="text-text-secondary mt-3">Loading fee information...</p>
       </div>
     );
   }
@@ -235,23 +216,25 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
   return (
     <div className="space-y-6">
       {/* Student Info */}
-      <div className="bg-gray-50 p-4 rounded-lg">
-        <h3 className="font-semibold text-gray-900 mb-2">Student Information</h3>
+      <div className="bg-surface-alt p-4 rounded-lg">
+        <h3 className="font-semibold text-text-primary mb-2">Student Information</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
-            <span className="text-gray-600">Name:</span>
+            <span className="text-text-secondary">Name:</span>
             <span className="ml-2 font-medium">{student.studentName}</span>
           </div>
           <div>
-            <span className="text-gray-600">Stage:</span>
-            <span className="ml-2 font-medium capitalize">{student.stage || student.skillCategory}</span>
+            <span className="text-text-secondary">Stage:</span>
+            <span className="ml-2 font-medium capitalize">
+              {student.stage || (student.stageNumber ? `Stage ${student.stageNumber}` : student.skillCategory)}
+            </span>
           </div>
           <div>
-            <span className="text-gray-600">Level:</span>
-            <span className="ml-2 font-medium">{student.level || student.skillLevel}</span>
+            <span className="text-text-secondary">Level:</span>
+            <span className="ml-2 font-medium">{student.level ?? student.levelNumber ?? student.skillLevel}</span>
           </div>
           <div>
-            <span className="text-gray-600">Enrolled:</span>
+            <span className="text-text-secondary">Enrolled:</span>
             <span className="ml-2 font-medium">
               {formatDate(student.enrollmentDate)}
             </span>
@@ -271,7 +254,7 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
               setShowCreditModal(true);
             }
           }}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-500 transition-colors"
         >
           {student.batchId ? 'Record Payment' : 'Add Credit'}
         </button>
@@ -279,19 +262,19 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
 
       {/* Overdue Fees */}
       {overdueFees.length > 0 && (
-        <div className="bg-white rounded-lg shadow-md p-6 border-2 border-red-200">
+        <div className="bg-surface rounded-lg  p-6 border-2 border-error-600/20">
           <h3 className="text-lg font-semibold text-red-700 mb-4 flex items-center gap-2">
             <span className="text-2xl">⚠️</span>
             Overdue Fees
           </h3>
           <div className="space-y-2">
             {overdueFees.map((fee, index) => (
-              <div key={fee._id || `overdue-${index}`} className="flex justify-between items-center bg-red-50 px-4 py-3 rounded-lg border-l-4 border-red-500">
+              <div key={fee._id || `overdue-${index}`} className="flex justify-between items-center bg-error-600/10 px-4 py-3 rounded-lg border-l-4 border-red-500">
                 <div>
-                  <p className="font-medium text-gray-900">{formatFeeMonth(fee.feeMonth)}</p>
-                  <p className="text-sm text-red-600">Overdue: {formatDate(fee.dueDate)}</p>
+                  <p className="font-medium text-text-primary">{formatFeeMonth(fee.feeMonth)}</p>
+                  <p className="text-sm text-red-400">Overdue: {formatDate(fee.dueDate)}</p>
                   {fee.status === 'partially_paid' && (
-                    <p className="text-xs text-orange-600">Partially Paid - {formatCurrency(fee.paidAmount)} paid</p>
+                    <p className="text-xs text-secondary-400">Partially Paid - {formatCurrency(fee.paidAmount)} paid</p>
                   )}
                 </div>
                 <span className="font-semibold text-red-700">
@@ -305,15 +288,15 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
 
       {/* Next Upcoming Fee */}
       {nextUpcomingFee && (
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">📅 Next Upcoming Fee</h3>
+        <div className="bg-surface rounded-lg  p-6">
+          <h3 className="text-lg font-semibold text-text-primary mb-4">📅 Next Upcoming Fee</h3>
           <div className="space-y-2">
-            <div className="flex justify-between items-center bg-blue-50 px-4 py-3 rounded-lg border-l-4 border-blue-500">
+            <div className="flex justify-between items-center bg-primary-600/10 px-4 py-3 rounded-lg border-l-4 border-blue-500">
               <div>
-                <p className="font-medium text-gray-900">{formatFeeMonth(nextUpcomingFee.feeMonth)}</p>
-                <p className="text-sm text-gray-600">Due: {formatDate(nextUpcomingFee.dueDate)}</p>
+                <p className="font-medium text-text-primary">{formatFeeMonth(nextUpcomingFee.feeMonth)}</p>
+                <p className="text-sm text-text-secondary">Due: {formatDate(nextUpcomingFee.dueDate)}</p>
               </div>
-              <span className="font-semibold text-blue-700">
+              <span className="font-semibold text-primary-300">
                 {formatCurrency(nextUpcomingFee.feeAmount, 'INR')}
               </span>
             </div>
@@ -323,19 +306,19 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
 
       {/* Active Credits */}
       {creditSummary && creditSummary.totalRemaining > 0 && (
-        <div className="bg-white rounded-lg shadow-md p-6 border-2 border-green-200">
-          <h3 className="text-lg font-semibold text-green-700 mb-4 flex items-center gap-2">
+        <div className="bg-surface rounded-lg  p-6 border-2 border-accent-600/20">
+          <h3 className="text-lg font-semibold text-accent-400 mb-4 flex items-center gap-2">
             <span className="text-2xl">💰</span>
             Active Credits
           </h3>
-          <div className="bg-green-50 p-4 rounded-lg mb-4">
+          <div className="bg-accent-600/10 p-4 rounded-lg mb-4">
             <div className="flex justify-between items-center mb-2">
-              <span className="text-sm text-gray-600">Total Balance:</span>
-              <span className="text-2xl font-bold text-green-700">
+              <span className="text-sm text-text-secondary">Total Balance:</span>
+              <span className="text-2xl font-bold text-accent-400">
                 {formatCurrency(creditSummary.totalRemaining)}
               </span>
             </div>
-            <div className="grid grid-cols-2 gap-4 text-xs text-gray-600">
+            <div className="grid grid-cols-2 gap-4 text-xs text-text-secondary">
               <div>
                 <span>Total Received:</span>
                 <span className="ml-2 font-medium">{formatCurrency(creditSummary.totalPaid)}</span>
@@ -348,29 +331,21 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
           </div>
           {credits.length > 0 && (
             <div className="space-y-2">
-              <h4 className="text-sm font-medium text-gray-700 mb-2">Credit History</h4>
+              <h4 className="text-sm font-medium text-text-secondary mb-2">Credit History</h4>
               {credits.map((credit) => (
-                <div key={credit._id} className="flex justify-between items-center bg-white px-4 py-3 rounded-lg border border-green-200">
+                <div key={credit._id || credit.id} className="flex justify-between items-center bg-surface px-4 py-3 rounded-lg border border-accent-600/20">
                   <div className="flex-1">
                     <div className="flex justify-between items-center">
-                      <p className="text-sm font-medium text-gray-900">
-                        {formatDate(credit.createdAt)} - Payment Received
+                      <p className="text-sm font-medium text-text-primary">
+                        {formatDate(credit.processedAt || credit.createdAt)} - {credit.type === 'credit_added' ? 'Credit Added' : credit.type === 'credit_used' ? 'Credit Used' : 'Credit Adjustment'}
                       </p>
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        credit.status === 'active' ? 'bg-green-100 text-green-800' : 
-                        credit.status === 'used' ? 'bg-gray-100 text-gray-600' : 
-                        'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {credit.status === 'used' ? 'Used' : credit.status === 'expired' ? 'Expired' : 'Active'}
-                      </span>
                     </div>
-                    <div className="flex gap-4 mt-1 text-xs text-gray-600">
-                      <span>Received: {formatCurrency(credit.amountPaid)}</span>
-                      <span>Used: {formatCurrency(credit.amountUsed)}</span>
-                      <span className="font-medium text-green-700">Balance: {formatCurrency(credit.remainingCredit)}</span>
+                    <div className="flex gap-4 mt-1 text-xs text-text-secondary">
+                      <span>Amount: ₹{(credit.amount ?? 0).toLocaleString()}</span>
+                      <span className="font-medium text-accent-400">Balance after: ₹{(credit.balanceAfter ?? 0).toLocaleString()}</span>
                     </div>
-                    {credit.notes && (
-                      <p className="text-xs text-gray-500 mt-1">{credit.notes}</p>
+                    {credit.description && (
+                      <p className="text-xs text-text-tertiary mt-1">{credit.description}</p>
                     )}
                   </div>
                 </div>
@@ -381,46 +356,46 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
       )}
 
       {/* Payment History */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment History</h3>
+      <div className="bg-surface rounded-lg  p-6">
+        <h3 className="text-lg font-semibold text-text-primary mb-4">Payment History</h3>
         {fees.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-white/7">
+              <thead className="bg-surface-alt">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
                     Month
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
                     Due Date
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
                     Amount
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
                     Paid
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
                     Payment Date
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
                     Transaction ID
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-surface divide-y divide-white/7">
                 {fees.map((fee) => (
                   <tr key={fee._id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-text-primary">
                       {formatFeeMonth(fee.feeMonth)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-tertiary">
                       {formatDate(fee.dueDate)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -428,22 +403,30 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
                         {getStatusLabel(fee.status)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatCurrency(fee.feeAmount)}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-primary">
+                      {fee.discountPercentage && fee.discountPercentage > 0 ? (
+                        <div className="flex flex-col">
+                          <span>{formatCurrency(fee.feeAmount)}</span>
+                          <span className="text-xs text-text-tertiary line-through">{formatCurrency(fee.originalFeeAmount || fee.feeAmount)}</span>
+                          <span className="text-xs text-accent-400 font-medium">{fee.discountPercentage}% off</span>
+                        </div>
+                      ) : (
+                        formatCurrency(fee.feeAmount)
+                      )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-primary">
                       {formatCurrency(fee.paidAmount)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-tertiary">
                       {fee.paymentDate ? formatDate(fee.paymentDate) : '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-tertiary">
                       {fee.transactionId || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <button
                         onClick={() => handleEditFee(fee)}
-                        className="text-blue-600 hover:text-blue-800 font-medium"
+                        className="text-primary-400 hover:text-primary-300 font-medium"
                       >
                         Edit
                       </button>
@@ -454,7 +437,7 @@ const StudentFeesTab = ({ student }: StudentFeesTabProps) => {
             </table>
           </div>
         ) : (
-          <p className="text-gray-500 text-center py-4">No payment history found</p>
+          <p className="text-text-tertiary text-center py-4">No payment history found</p>
         )}
       </div>
 

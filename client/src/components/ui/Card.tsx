@@ -5,28 +5,28 @@ interface CardProps {
   className?: string;
   padding?: 'none' | 'sm' | 'md' | 'lg';
   hover?: boolean;
-  variant?: 'default' | 'elevated' | 'outlined' | 'glass';
+  variant?: 'default' | 'elevated' | 'outlined' | 'bordered';
 }
 
-const Card = ({ 
-  children, 
-  className = '', 
-  padding = 'md', 
+const Card = ({
+  children,
+  className = '',
+  padding = 'md',
   hover = false,
-  variant = 'default'
+  variant = 'default',
 }: CardProps) => {
   const paddingClasses = {
     none: '',
     sm: 'p-4',
-    md: 'p-6',
-    lg: 'p-8',
+    md: 'p-4',
+    lg: 'p-5',
   };
 
   const variantClasses = {
-    default: 'bg-surface rounded-xl shadow-navy border border-primary-100/20',
-    elevated: 'bg-surface rounded-xl shadow-navy-lg border border-primary-100/30',
-    outlined: 'bg-surface rounded-xl border-2 border-primary-200/50 shadow-sm',
-    glass: 'bg-surface/80 backdrop-blur-md rounded-xl shadow-navy border border-primary-100/20',
+    default:  'bg-surface rounded-lg border border-white/7 shadow-sm',
+    elevated: 'bg-surface-alt rounded-lg border border-white/10 shadow-md',
+    outlined: 'bg-surface rounded-lg border-2 border-white/10',
+    bordered: 'bg-surface rounded-lg border border-primary-600/40 shadow-sm',
   };
 
   return (
@@ -34,7 +34,7 @@ const Card = ({
       className={`
         ${variantClasses[variant]}
         ${paddingClasses[padding]}
-        ${hover ? 'card-hover hover:shadow-navy-lg' : ''}
+        ${hover ? 'transition-all duration-150 hover:border-white/15 hover:bg-surface-hover cursor-pointer' : ''}
         ${className}
       `}
     >

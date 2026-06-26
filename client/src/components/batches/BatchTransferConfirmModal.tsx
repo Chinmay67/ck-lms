@@ -61,12 +61,12 @@ const BatchTransferConfirmModal: React.FC<BatchTransferConfirmModalProps> = ({
         {/* List of students to transfer grouped by source batch */}
         <div className="max-h-64 overflow-y-auto space-y-3">
           {Object.entries(studentsByBatch).map(([batchName, students]) => (
-            <div key={batchName} className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="bg-gray-100 px-4 py-2 border-b border-gray-200">
-                <span className="text-sm font-medium text-gray-700">
-                  From: <span className="text-gray-900">{batchName}</span>
+            <div key={batchName} className="border border-white/10 rounded-lg overflow-hidden">
+              <div className="bg-surface-hover px-4 py-2 border-b border-white/10">
+                <span className="text-sm font-medium text-text-secondary">
+                  From: <span className="text-text-primary">{batchName}</span>
                 </span>
-                <span className="text-sm text-gray-500 ml-2">
+                <span className="text-sm text-text-tertiary ml-2">
                   ({students.length} student{students.length !== 1 ? 's' : ''})
                 </span>
               </div>
@@ -74,22 +74,22 @@ const BatchTransferConfirmModal: React.FC<BatchTransferConfirmModalProps> = ({
                 {students.map((student) => (
                   <li key={student._id} className="px-4 py-2 flex items-center gap-3">
                     <div className="flex-shrink-0">
-                      <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
-                        <span className="text-sm font-medium text-gray-600">
+                      <div className="h-8 w-8 rounded-full bg-surface-hover flex items-center justify-center">
+                        <span className="text-sm font-medium text-text-secondary">
                           {student.studentName.charAt(0).toUpperCase()}
                         </span>
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
+                      <p className="text-sm font-medium text-text-primary truncate">
                         {student.studentName}
                       </p>
-                      <p className="text-xs text-gray-500 truncate">
+                      <p className="text-xs text-text-tertiary truncate">
                         {student.email}
                       </p>
                     </div>
                     <div className="flex-shrink-0">
-                      <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="h-5 w-5 text-text-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                       </svg>
                     </div>
@@ -101,23 +101,23 @@ const BatchTransferConfirmModal: React.FC<BatchTransferConfirmModalProps> = ({
         </div>
 
         {/* Summary */}
-        <div className="bg-gray-50 p-3 rounded-lg text-sm">
+        <div className="bg-surface-alt p-3 rounded-lg text-sm">
           <div className="flex justify-between">
-            <span className="text-gray-600">New assignments:</span>
+            <span className="text-text-secondary">New assignments:</span>
             <span className="font-medium">{newAssignmentCount} student{newAssignmentCount !== 1 ? 's' : ''}</span>
           </div>
           <div className="flex justify-between mt-1">
-            <span className="text-gray-600">Transfers:</span>
+            <span className="text-text-secondary">Transfers:</span>
             <span className="font-medium text-yellow-700">{transferCount} student{transferCount !== 1 ? 's' : ''}</span>
           </div>
-          <div className="flex justify-between mt-1 pt-1 border-t border-gray-200">
-            <span className="font-medium text-gray-700">Total to add:</span>
+          <div className="flex justify-between mt-1 pt-1 border-t border-white/10">
+            <span className="font-medium text-text-secondary">Total to add:</span>
             <span className="font-semibold">{totalStudentsToAdd} student{totalStudentsToAdd !== 1 ? 's' : ''}</span>
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+        <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
           <Button variant="secondary" onClick={onCancel} disabled={isLoading}>
             Cancel
           </Button>

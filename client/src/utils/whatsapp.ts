@@ -38,7 +38,7 @@ export const formatPhoneForWhatsApp = (phone: string | undefined, countryCode: s
  */
 export const generateFeeReminderMessage = (
   studentName: string,
-  instituteName: string = 'our institute'
+  instituteName: string = 'Chess Klub'
 ): string => {
   const message = `Hello ${studentName},
 

@@ -1,4 +1,4 @@
-import { FaChevronLeft, FaChevronRight } from 'react-icons/fa';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import Button from '../ui/Button';
 
 interface PaginationProps {
@@ -51,56 +51,52 @@ const Pagination = ({
   };
 
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6">
-      {/* Items info and page size selector */}
-      <div className="flex items-center gap-4">
-        <p className="text-sm text-gray-700">
-          Showing <span className="font-medium">{startItem}</span> to{' '}
-          <span className="font-medium">{endItem}</span> of{' '}
-          <span className="font-medium">{totalItems}</span> results
+    <div className="flex items-center justify-between gap-4">
+      {/* Info + per-page */}
+      <div className="flex items-center gap-3">
+        <p className="text-xs text-text-tertiary">
+          <span className="text-text-secondary font-medium">{startItem}–{endItem}</span>
+          {' '}of{' '}
+          <span className="text-text-secondary font-medium">{totalItems}</span>
         </p>
-
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-700">Per page:</label>
-          <select
-            value={itemsPerPage}
-            onChange={(e) => onItemsPerPageChange(Number(e.target.value))}
-            className="px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
-          >
-            <option value={5}>5</option>
-            <option value={10}>10</option>
-            <option value={20}>20</option>
-            <option value={50}>50</option>
-          </select>
-        </div>
+        <select
+          value={itemsPerPage}
+          onChange={(e) => onItemsPerPageChange(Number(e.target.value))}
+          className="h-7 px-2 bg-surface-alt border border-white/10 rounded-lg text-xs text-text-secondary focus:outline-none focus:ring-1 focus:ring-primary-400 hover:border-white/20 transition-colors"
+        >
+          <option value={5}>5 / page</option>
+          <option value={10}>10 / page</option>
+          <option value={20}>20 / page</option>
+          <option value={50}>50 / page</option>
+        </select>
       </div>
 
-      {/* Pagination controls */}
-      <div className="flex items-center gap-2">
+      {/* Page buttons */}
+      <div className="flex items-center gap-1">
         <Button
-          variant="outline"
-          size="sm"
+          variant="ghost"
+          size="xs"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
         >
-          <FaChevronLeft className="text-sm" />
+          <ChevronLeft className="w-4 h-4" />
         </Button>
 
         <div className="flex gap-1">
           {getPageNumbers().map((page, index) =>
             page === '...' ? (
-              <span key={`ellipsis-${index}`} className="px-3 py-1.5 text-gray-500">
-                ...
+              <span key={`ellipsis-${index}`} className="w-8 flex items-center justify-center text-xs text-text-tertiary">
+                …
               </span>
             ) : (
               <button
                 key={page}
                 onClick={() => onPageChange(page as number)}
                 className={`
-                  px-3 py-1.5 rounded-lg text-sm font-medium transition-all
+                  w-8 h-8 rounded-lg text-xs font-medium transition-all
                   ${currentPage === page
-                    ? 'bg-gradient-primary text-white shadow-md'
-                    : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                    ? 'bg-primary-600 text-white shadow-glow'
+                    : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                   }
                 `}
               >
@@ -111,12 +107,12 @@ const Pagination = ({
         </div>
 
         <Button
-          variant="outline"
-          size="sm"
+          variant="ghost"
+          size="xs"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
         >
-          <FaChevronRight className="text-sm" />
+          <ChevronRight className="w-4 h-4" />
         </Button>
       </div>
     </div>

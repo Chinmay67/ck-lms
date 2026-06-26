@@ -1,4 +1,5 @@
-import { FaEdit, FaPhone, FaEnvelope, FaCalendar, FaMoneyBillWave, FaExclamationTriangle, FaPowerOff, FaWhatsapp } from 'react-icons/fa';
+import { Pencil, Phone, Mail, Calendar, ExternalLink, AlertTriangle, Power, MessageCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import Badge from '../ui/Badge';
 import { type Student } from '../../types/student';
 import { sendWhatsAppReminder, isValidWhatsAppPhone } from '../../utils/whatsapp';
@@ -12,9 +13,10 @@ interface StudentRowProps {
   onToggleActive?: (id: string) => void;
 }
 
-const StudentRow = ({ student, isSelected, onSelect, onEdit, onFees, onToggleActive }: StudentRowProps) => {
+const StudentRow = ({ student, isSelected, onSelect, onEdit, onToggleActive }: StudentRowProps) => {
+  const navigate = useNavigate();
   const handleWhatsAppReminder = () => {
-    sendWhatsAppReminder(student.studentName, student.phone, 'GyanVibe');
+    sendWhatsAppReminder(student.studentName, student.phone, 'Chess Klub');
   };
   const getBadgeVariant = (category?: string) => {
     switch (category) {
@@ -29,9 +31,25 @@ const StudentRow = ({ student, isSelected, onSelect, onEdit, onFees, onToggleAct
     }
   };
 
-  const getCourseDisplayName = (stage?: string) => {
-    if (!stage) return '-';
-    return stage.charAt(0).toUpperCase() + stage.slice(1);
+  const getCourseDisplayName = () => {
+    if (typeof student.courseId === 'object' && student.courseId?.displayName) return student.courseId.displayName;
+    if (student.stage) return student.stage.charAt(0).toUpperCase() + student.stage.slice(1);
+    if (student.stageNumber) return `Stage ${student.stageNumber}`;
+    return '-';
+  };
+
+  const getStageDisplayName = () => {
+    if (typeof student.courseId === 'object') {
+      const stage = student.courseId?.stages?.find((s) => s.stageNumber === student.stageNumber);
+      if (stage) return stage.stageName;
+    }
+    if (student.stage) return student.stage.charAt(0).toUpperCase() + student.stage.slice(1);
+    return student.stageNumber ? `Stage ${student.stageNumber}` : '-';
+  };
+
+  const getLevelDisplayName = () => {
+    const level = student.levelNumber ?? student.level ?? student.skillLevel;
+    return level ? `Level ${level}` : '-';
   };
 
   const formatDate = (dateString: string) => {
@@ -43,9 +61,9 @@ const StudentRow = ({ student, isSelected, onSelect, onEdit, onFees, onToggleAct
   };
 
   return (
-    <tr className={`hover:bg-surface-hover transition-colors border-b border-border ${!student.isActive ? 'bg-surface opacity-60' : ''}`}>
+    <tr className={`group/row relative hover:bg-surface-hover transition-colors ${!student.isActive ? 'opacity-50' : ''}`}>
       {/* Checkbox */}
-      <td className="px-4 py-3 w-12">
+      <td className="px-4 py-3 w-10">
         <input
           type="checkbox"
           checked={isSelected}
@@ -57,20 +75,24 @@ const StudentRow = ({ student, isSelected, onSelect, onEdit, onFees, onToggleAct
       {/* Student Name */}
       <td className="px-4 py-3 w-64 min-w-[200px] max-w-[280px]">
         <div className="flex items-center gap-2">
-          <div className="w-9 h-9 bg-gradient-primary rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
+          <div className="w-9 h-9 bg-primary-600 rounded-lg flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
             {student.studentName.charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 mb-0.5">
-              <span className="font-semibold text-text-primary text-sm truncate" title={student.studentName}>
+              <button
+                onClick={() => navigate(`/students/${student._id}`)}
+                className="font-semibold text-text-primary text-sm truncate hover:text-primary-400 transition-colors text-left"
+                title={`Open ${student.studentName}'s profile`}
+              >
                 {student.studentName}
-              </span>
+              </button>
               {!student.isActive && (
                 <Badge variant="default" size="sm" className="flex-shrink-0">Inactive</Badge>
               )}
               {student.hasOverdueFees && student.isActive && (
-                <div className="flex items-center gap-1 px-1.5 py-0.5 bg-error-100 text-error-700 rounded-full text-[10px] font-medium whitespace-nowrap flex-shrink-0">
-                  <FaExclamationTriangle size={9} />
+                <div className="flex items-center gap-1 px-1.5 py-0.5 bg-error-600/15 text-red-400 rounded text-[10px] font-medium whitespace-nowrap flex-shrink-0">
+                  <AlertTriangle className="w-2.5 h-2.5" />
                   <span>Overdue</span>
                 </div>
               )}
@@ -84,13 +106,13 @@ const StudentRow = ({ student, isSelected, onSelect, onEdit, onFees, onToggleAct
         <div className="space-y-1">
           {student.email && (
             <div className="flex items-center text-xs text-text-primary truncate" title={student.email}>
-              <FaEnvelope className="mr-1.5 text-text-tertiary flex-shrink-0" size={11} />
+              <Mail className="mr-1.5 text-text-tertiary flex-shrink-0 w-3 h-3" />
               <span className="truncate">{student.email}</span>
             </div>
           )}
           {student.phone && (
             <div className="flex items-center text-xs text-text-secondary truncate" title={student.phone}>
-              <FaPhone className="mr-1.5 text-text-tertiary flex-shrink-0" size={11} />
+              <Phone className="mr-1.5 text-text-tertiary flex-shrink-0 w-3 h-3" />
               <span className="truncate">{student.phone}</span>
             </div>
           )}
@@ -104,8 +126,11 @@ const StudentRow = ({ student, isSelected, onSelect, onEdit, onFees, onToggleAct
 
       {/* Course */}
       <td className="px-4 py-3 w-32 min-w-[100px]">
-        <div className="text-sm text-text-primary font-medium truncate" title={getCourseDisplayName(student.stage)}>
-          {getCourseDisplayName(student.stage)}
+        <div className="text-sm text-text-primary font-medium truncate" title={getCourseDisplayName()}>
+          {getCourseDisplayName()}
+        </div>
+        <div className="text-xs text-text-tertiary truncate" title={getStageDisplayName()}>
+          {getStageDisplayName()}
         </div>
       </td>
 
@@ -113,7 +138,7 @@ const StudentRow = ({ student, isSelected, onSelect, onEdit, onFees, onToggleAct
       <td className="px-4 py-3 w-28 min-w-[90px]">
         <div className="flex-shrink-0 inline-block">
           <Badge variant={getBadgeVariant(student.stage)} className="whitespace-nowrap">
-            {student.level ? `Level ${student.level}` : '-'}
+            {getLevelDisplayName()}
           </Badge>
         </div>
       </td>
@@ -121,50 +146,48 @@ const StudentRow = ({ student, isSelected, onSelect, onEdit, onFees, onToggleAct
       {/* Joined Date */}
       <td className="px-4 py-3 w-36 min-w-[120px]">
         <div className="flex items-center text-xs text-text-secondary whitespace-nowrap" title={formatDate(student.enrollmentDate)}>
-          <FaCalendar className="mr-1.5 text-text-tertiary flex-shrink-0" size={11} />
+          <Calendar className="mr-1.5 text-text-tertiary flex-shrink-0 w-3 h-3" />
           <span className="truncate">{formatDate(student.enrollmentDate)}</span>
         </div>
       </td>
 
       {/* Actions */}
-      <td className="px-4 py-3 w-40 min-w-[140px]">
-        <div className="flex items-center gap-1.5 justify-end">
-          {onFees && (
-            <button
-              onClick={() => onFees(student)}
-              className="p-1.5 text-success-600 hover:bg-success-50 rounded-lg transition-all flex-shrink-0"
-              title="View fees"
-            >
-              <FaMoneyBillWave size={14} />
-            </button>
-          )}
+      <td className="px-3 py-3 w-32 min-w-[120px]">
+        <div className="flex items-center gap-1 justify-end">
+          <button
+            onClick={() => navigate(`/students/${student._id}`)}
+            title="Open profile"
+            className="w-7 h-7 flex items-center justify-center rounded-md text-text-tertiary hover:text-primary-400 hover:bg-primary-600/15 transition-all"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+          </button>
           {student.hasOverdueFees && isValidWhatsAppPhone(student.phone) && (
             <button
               onClick={handleWhatsAppReminder}
-              className="p-1.5 text-success-500 hover:bg-success-50 rounded-lg transition-all flex-shrink-0"
-              title="Send WhatsApp reminder"
+              title="WhatsApp reminder"
+              className="w-7 h-7 flex items-center justify-center rounded-md text-text-tertiary hover:text-accent-400 hover:bg-accent-600/15 transition-all"
             >
-              <FaWhatsapp size={14} />
+              <MessageCircle className="w-3.5 h-3.5" />
             </button>
           )}
           <button
             onClick={() => onEdit(student)}
-            className="p-1.5 text-primary-600 hover:bg-primary-50 rounded-lg transition-all flex-shrink-0"
             title="Edit student"
+            className="w-7 h-7 flex items-center justify-center rounded-md text-text-tertiary hover:text-primary-400 hover:bg-primary-600/15 transition-all"
           >
-            <FaEdit size={14} />
+            <Pencil className="w-3.5 h-3.5" />
           </button>
           {onToggleActive && (
             <button
               onClick={() => onToggleActive(student._id)}
-              className={`p-1.5 rounded-lg transition-all flex-shrink-0 ${
+              title={student.isActive ? 'Deactivate' : 'Activate'}
+              className={`w-7 h-7 flex items-center justify-center rounded-md transition-all ${
                 student.isActive
-                  ? 'text-warning-600 hover:bg-warning-50'
-                  : 'text-primary-600 hover:bg-primary-50'
+                  ? 'text-text-tertiary hover:text-secondary-400 hover:bg-secondary-600/15'
+                  : 'text-text-tertiary hover:text-primary-400 hover:bg-primary-600/15'
               }`}
-              title={student.isActive ? 'Deactivate student' : 'Activate student'}
             >
-              <FaPowerOff size={14} />
+              <Power className="w-3.5 h-3.5" />
             </button>
           )}
         </div>

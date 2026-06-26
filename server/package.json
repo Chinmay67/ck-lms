@@ -10,6 +10,8 @@
     "ingest": "tsx scripts/IngestStudentsFromExcel.ts",
     "migrate:shared-contacts": "tsx scripts/MigrateToSharedContacts.ts",
     "create-superadmin": "tsx scripts/CreateSuperAdmin.ts",
+    "backfill-filled-seats": "tsx scripts/BackfillFilledSeats.ts --apply",
+    "backfill-filled-seats:dry-run": "tsx scripts/BackfillFilledSeats.ts",
     "generate-fees": "tsx scripts/GenerateMissingFeeRecords.ts",
     "generate-fees:dry-run": "tsx scripts/GenerateMissingFeeRecords.ts --dry-run",
     "cleanup-fees": "tsx scripts/CleanupExcessFeeRecords.ts",
@@ -25,7 +27,9 @@
     "fix-discrepancies:dry-run": "tsx scripts/FixPaymentDiscrepancies.ts",
     "analyze-status": "tsx scripts/AnalyzeFeeAndStudentStatus.ts",
     "fix-payment-amounts": "tsx scripts/FixPaymentDateWithZeroAmount.ts --apply",
-    "fix-payment-amounts:dry-run": "tsx scripts/FixPaymentDateWithZeroAmount.ts"
+    "fix-payment-amounts:dry-run": "tsx scripts/FixPaymentDateWithZeroAmount.ts",
+    "import:excel": "tsx src/scripts/import_excel_v2.ts",
+    "seed:e2e": "tsx src/scripts/seed_e2e_admin_dataset.ts"
   },
   "dependencies": {
     "@microsoft/microsoft-graph-client": "^3.0.7",
@@ -34,6 +38,7 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "4.22.1",
+    "express-rate-limit": "^8.5.2",
     "googleapis": "^159.0.0",
     "helmet": "^7.1.0",
     "imap": "^0.8.19",
@@ -51,6 +56,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
+    "@types/express-rate-limit": "^5.1.3",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.9",
     "@types/multer": "^2.0.0",

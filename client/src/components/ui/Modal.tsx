@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
-import { FaTimes } from 'react-icons/fa';
+import { X } from 'lucide-react';
 
 interface ModalProps {
   isOpen: boolean;
@@ -36,30 +36,30 @@ const Modal = ({ isOpen, onClose, title, children, size = 'md', showCloseButton 
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-primary-900/40 backdrop-blur-md transition-opacity animate-fade-in"
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
         onClick={onClose}
-      ></div>
+      />
 
       {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-4">
         <div
-          className={`relative w-full ${sizeClasses[size]} bg-surface rounded-2xl shadow-navy-lg border border-primary-100/30 transform transition-all animate-scale-in`}
+          className={`relative w-full ${sizeClasses[size]} bg-surface rounded-lg border border-white/8 shadow-navy-lg animate-slide-up`}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-primary-100/30 bg-gradient-to-r from-primary-50 to-secondary-50 rounded-t-2xl">
-            <h3 className="text-xl font-bold text-text-primary">{title}</h3>
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/7">
+            <h3 className="text-base font-semibold text-text-primary tracking-tight">{title}</h3>
             {showCloseButton && (
               <button
                 onClick={onClose}
-                className="text-text-tertiary hover:text-text-primary transition-colors p-2 rounded-xl hover:bg-primary-100/50"
+                className="text-text-tertiary hover:text-text-primary transition-colors p-1.5 rounded-lg hover:bg-surface-hover"
               >
-                <FaTimes className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             )}
           </div>
 
           {/* Content */}
-          <div className="px-6 py-4 max-h-[calc(100vh-200px)] overflow-y-auto">
+          <div className="px-5 py-4 max-h-[calc(100vh-160px)] overflow-y-auto custom-scrollbar">
             {children}
           </div>
         </div>

@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FaPlus, FaUsers, FaUpload } from 'react-icons/fa';
+import { AlertTriangle, Plus, UserCheck, Users, UserX } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { StudentsAPI, FeesAPI } from '../services/api';
-import type { Student } from '../types/student';
-import Card from './ui/Card';
+import { StudentsAPI, AdminStudentsAPI } from '../services/api';
+import type { Student, StudentUpdate } from '../types/student';
 import Button from './ui/Button';
 import LoadingSpinner from './ui/LoadingSpinner';
 import Modal from './ui/Modal';
@@ -17,14 +16,18 @@ import ExportButton from './students/ExportButton';
 import StudentFeesTab from './fees/StudentFeesTab';
 import FeePaymentModal from './fees/FeePaymentModal';
 import AddCreditModal from './fees/AddCreditModal';
-import BulkUploadModal from './students/BulkUploadModal';
+
+const getRefId = (value: Student['courseId'] | Student['batchId'] | undefined): string | null => {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  return value._id ?? value.id ?? null;
+};
 
 const StudentsList = () => {
   // State management
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [_overdueStudents, setOverdueStudents] = useState<Record<string, boolean>>({});
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -42,7 +45,6 @@ const StudentsList = () => {
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isBulkUploadModalOpen, setIsBulkUploadModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [feesStudent, setFeesStudent] = useState<Student | null>(null);
@@ -79,21 +81,9 @@ const StudentsList = () => {
     }
   }, [currentPage, itemsPerPage, searchQuery, selectedCourse, selectedStatus]);
 
-  const fetchOverdueStatus = useCallback(async () => {
-    try {
-      const response = await FeesAPI.getStudentsOverdueStatus();
-      if (response.success && response.data) {
-        setOverdueStudents(response.data);
-      }
-    } catch (err) {
-      console.error('Error fetching overdue status:', err);
-    }
-  }, []);
-
   useEffect(() => {
     fetchStudents();
-    fetchOverdueStatus();
-  }, [fetchStudents, fetchOverdueStatus]);
+  }, [fetchStudents]);
 
   // Search handler
   const handleSearch = useCallback((query: string) => {
@@ -162,45 +152,113 @@ const StudentsList = () => {
     setIsModalOpen(true);
   };
 
-  const handleSubmitStudent = async (studentData: Partial<Student>) => {
+  const handleSubmitStudent = async (studentData: StudentUpdate): Promise<string | void> => {
     try {
       if (modalMode === 'create') {
-        const response = await StudentsAPI.createStudent(studentData);
+        const courseId = (studentData as any).courseId;
+        const stageNumber = (studentData as any).stageNumber;
+        const levelNumber = (studentData as any).levelNumber;
+        const monthlyFee = (studentData as any).monthlyFee;
+
+        if (!courseId || stageNumber == null || levelNumber == null || !monthlyFee) {
+          return 'Please fill in all required academic fields (course, stage, level, fee)';
+        }
+
+        const nextBatchId = getRefId(studentData.batchId);
+        const hasBatch = !!nextBatchId;
+        const response = await AdminStudentsAPI.create({
+          studentName: studentData.studentName!,
+          parentName: studentData.parentName,
+          phone: studentData.phone,
+          email: studentData.email,
+          dob: studentData.dob,
+          address: studentData.address,
+          referredBy: studentData.referredBy,
+          enrollmentDate: studentData.enrollmentDate,
+          courseId,
+          stageNumber: Number(stageNumber),
+          levelNumber: Number(levelNumber),
+          batchId: nextBatchId ?? undefined,
+          monthlyFee: Number(monthlyFee),
+          discountType: (studentData as any).discountType ?? 'none',
+          discountPct: (studentData as any).discountType === 'percentage' ? Number((studentData as any).discountValue ?? 0) : 0,
+          discountAmount: (studentData as any).discountType === 'fixed' ? Number((studentData as any).discountValue ?? 0) : 0,
+          discountReason: (studentData as any).discountReason ?? '',
+          createFirstFeeRecord: !!hasBatch,
+          firstMonthFee: Number(monthlyFee),
+        });
+
         if (response.success && response.data) {
           toast.success('Student created successfully!');
           setIsModalOpen(false);
-          // Get the created student from response
           const createdStudent = (response.data as any).student || response.data;
           setNewlyCreatedStudent(createdStudent);
-          
-          // Show appropriate modal based on batch assignment
-          // Check for truthy batchId (not null, undefined, or empty string)
-          const hasBatch = studentData.batchId && studentData.batchId !== '' && studentData.batchId !== null;
           if (hasBatch) {
-            // Has batch - show fee payment modal
             setShowFeePaymentAfterCreate(true);
           } else {
-            // No batch - show credit modal
             setShowCreditModalAfterCreate(true);
           }
+          fetchStudents();
         } else {
-          toast.error(response.message || 'Failed to create student');
-          return;
+          return (response as any).error || (response as any).message || 'Failed to create student';
         }
+
       } else if (editingStudent) {
-        const response = await StudentsAPI.updateStudent(editingStudent._id, studentData);
-        if (response.success) {
-          toast.success('Student updated successfully!');
-          setIsModalOpen(false);
-        } else {
-          toast.error(response.message || 'Failed to update student');
-          return;
+        const studentId = (editingStudent as any).id || editingStudent._id;
+        const courseId = (studentData as any).courseId;
+        const stageNumber = (studentData as any).stageNumber;
+        const levelNumber = (studentData as any).levelNumber;
+        const monthlyFee = (studentData as any).monthlyFee;
+        const originalCourseId = typeof editingStudent.courseId === 'object'
+          ? (editingStudent.courseId as any)?._id ?? null
+          : editingStudent.courseId ?? null;
+        const originalBatchId = getRefId(editingStudent.batchId);
+        const nextBatchId = getRefId(studentData.batchId);
+        const academicChanged =
+          courseId !== originalCourseId ||
+          stageNumber !== editingStudent.stageNumber ||
+          levelNumber !== editingStudent.levelNumber;
+        const batchChanged = nextBatchId !== originalBatchId;
+
+        if (academicChanged && courseId && stageNumber != null && levelNumber != null && monthlyFee) {
+          const response = await AdminStudentsAPI.upgrade(studentId, {
+            courseId,
+            stageNumber: Number(stageNumber),
+            levelNumber: Number(levelNumber),
+            monthlyFee: Number(monthlyFee),
+            batchId: nextBatchId ?? undefined,
+            discountType: (studentData as any).discountType ?? 'none',
+            discountPct: (studentData as any).discountType === 'percentage' ? Number((studentData as any).discountValue ?? 0) : 0,
+            discountAmount: (studentData as any).discountType === 'fixed' ? Number((studentData as any).discountValue ?? 0) : 0,
+            discountReason: (studentData as any).discountReason ?? '',
+          });
+          if (!response.success) {
+            return (response as any).error || 'Failed to upgrade student';
+          }
+        } else if (batchChanged) {
+          const response = await AdminStudentsAPI.changeBatch(studentId, { newBatchId: nextBatchId });
+          if (!response.success) {
+            return (response as any).error || 'Failed to change batch';
+          }
         }
+
+        const personalFields: Record<string, any> = {};
+        const allowed = ['studentName', 'parentName', 'phone', 'email', 'dob', 'address', 'alternatePhone', 'alternateEmail', 'referredBy'];
+        allowed.forEach((k) => { if ((studentData as any)[k] !== undefined) personalFields[k] = (studentData as any)[k]; });
+
+        if (Object.keys(personalFields).length > 0) {
+          const response = await AdminStudentsAPI.update(studentId, personalFields);
+          if (!response.success) {
+            return (response as any).error || 'Failed to update student info';
+          }
+        }
+
+        toast.success('Student updated successfully!');
+        setIsModalOpen(false);
+        fetchStudents();
       }
-      fetchStudents();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to save student');
-      console.error('Error saving student:', err);
+      return err.response?.data?.error || err.message || 'Failed to save student';
     }
   };
 
@@ -209,7 +267,6 @@ const StudentsList = () => {
     setShowCreditModalAfterCreate(false);
     setNewlyCreatedStudent(null);
     fetchStudents();
-    fetchOverdueStatus();
   };
 
   const handleSkipFeePayment = () => {
@@ -280,59 +337,34 @@ const StudentsList = () => {
     URL.revokeObjectURL(url);
   };
 
+  const visibleActive = students.filter((student) => student.isActive).length;
+  const visibleInactive = students.filter((student) => !student.isActive).length;
+  const visibleOverdue = students.filter((student) => student.isActive && student.hasOverdueFees).length;
+  const activeFilterCount = Number(!!searchQuery) + Number(selectedCourse !== 'all') + Number(selectedStatus !== 'all');
+  const kpis = [
+    { label: 'Total', value: totalStudents, icon: Users, tone: 'text-primary-300 bg-primary-600/15 border-primary-500/20' },
+    { label: 'Visible active', value: visibleActive, icon: UserCheck, tone: 'text-success-400 bg-success-600/15 border-success-500/20' },
+    { label: 'Visible inactive', value: visibleInactive, icon: UserX, tone: 'text-text-tertiary bg-white/6 border-white/10' },
+    { label: 'Visible overdue', value: visibleOverdue, icon: AlertTriangle, tone: 'text-error-400 bg-error-600/15 border-error-500/20' },
+  ];
+
   if (error) {
     return (
-      <Card className="text-center py-12">
-        <div className="text-red-600">
-          <p className="text-lg font-medium">Error Loading Students</p>
-          <p className="text-sm mt-2">{error}</p>
-          <Button onClick={fetchStudents} className="mt-4">
-            Try Again
-          </Button>
-        </div>
-      </Card>
+      <div className="flex flex-col items-center justify-center h-64 bg-surface rounded-lg border border-white/7">
+        <p className="text-sm font-medium text-text-secondary mb-3">{error}</p>
+        <Button onClick={fetchStudents} variant="outline" size="sm">Try Again</Button>
+      </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header Section */}
-      <Card>
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-gradient-primary rounded-lg flex items-center justify-center shadow-md">
-              <FaUsers className="text-white text-2xl" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Students Management</h1>
-              <p className="text-sm text-gray-600 mt-1">
-                Manage and track all your students in one place
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <ExportButton students={students} />
-            <Button onClick={() => setIsBulkUploadModalOpen(true)} variant="secondary">
-              <FaUpload />
-              Bulk Upload
-            </Button>
-            <Button onClick={handleCreateStudent} variant="primary">
-              <FaPlus />
-              Add Student
-            </Button>
-          </div>
+    <div className="space-y-4">
+      {/* Page toolbar — single flat row, no Card wrapper */}
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <SearchBar onSearch={handleSearch} />
         </div>
-      </Card>
-
-      {/* Search and Filters */}
-      <Card>
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-            <SearchBar onSearch={handleSearch} />
-            <div className="text-sm text-gray-600">
-              Total: <span className="font-semibold text-gray-900">{totalStudents}</span> students
-            </div>
-          </div>
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0">
           <FilterPanel
             selectedCourse={selectedCourse}
             onCourseChange={handleCourseChange}
@@ -340,17 +372,42 @@ const StudentsList = () => {
             onStatusChange={handleStatusChange}
             onClearFilters={handleClearFilters}
           />
+          <span className="h-9 inline-flex items-center px-3 text-xs text-text-tertiary whitespace-nowrap rounded-lg border border-white/8 bg-surface">
+            {activeFilterCount ? `${activeFilterCount} filter${activeFilterCount > 1 ? 's' : ''}` : 'No filters'}
+          </span>
+          <ExportButton students={students} />
+          <Button onClick={handleCreateStudent} variant="primary" size="sm" className="h-9 whitespace-nowrap">
+            <Plus className="w-4 h-4" />
+            <span>Add Student</span>
+          </Button>
         </div>
-      </Card>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        {kpis.map((kpi) => {
+          const Icon = kpi.icon;
+          return (
+            <div key={kpi.label} className="bg-surface rounded-lg border border-white/7 px-3 py-2.5 flex items-center gap-3">
+              <div className={`w-8 h-8 rounded-lg border flex items-center justify-center ${kpi.tone}`}>
+                <Icon className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-lg font-semibold text-text-primary leading-5">{kpi.value}</div>
+                <div className="text-[11px] text-text-tertiary uppercase tracking-wide truncate">{kpi.label}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
       {/* Students Table */}
       {loading ? (
-        <Card className="py-12">
-          <LoadingSpinner size="xl" className="py-8" />
-          <p className="text-center text-gray-600 mt-4">Loading students...</p>
-        </Card>
+        <div className="flex flex-col items-center justify-center h-64 bg-surface rounded-lg border border-white/7">
+          <LoadingSpinner size="lg" />
+          <p className="mt-4 text-sm text-text-secondary">Loading students…</p>
+        </div>
       ) : (
-        <Card padding="none">
+        <div className="bg-surface rounded-lg border border-white/7 overflow-hidden">
           <StudentsTable
             students={students}
             selectedStudents={selectedStudents}
@@ -360,9 +417,8 @@ const StudentsList = () => {
             onFees={handleViewFees}
             onToggleActive={handleToggleActiveStatus}
           />
-
           {students.length > 0 && (
-            <div className="px-6 pb-6">
+            <div className="px-4 py-3 border-t border-white/7">
               <Pagination
                 currentPage={currentPage}
                 totalPages={totalPages}
@@ -373,7 +429,7 @@ const StudentsList = () => {
               />
             </div>
           )}
-        </Card>
+        </div>
       )}
 
       {/* Student Modal */}
@@ -411,13 +467,6 @@ const StudentsList = () => {
         onClose={handleSkipFeePayment}
         student={newlyCreatedStudent}
         onSuccess={handleFeePaymentSuccess}
-      />
-
-      {/* Bulk Upload Modal */}
-      <BulkUploadModal
-        isOpen={isBulkUploadModalOpen}
-        onClose={() => setIsBulkUploadModalOpen(false)}
-        onSuccess={fetchStudents}
       />
 
       {/* Bulk Actions Bar */}

@@ -4,15 +4,19 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { config } from './config/index.js';
 import Database from './config/database.js';
-import studentRoutes from './routes/students.js';
-import syncRoutes from './routes/sync.js';
 import authRoutes from './routes/auth.js';
-import feeRoutes from './routes/fees.js';
-import courseRoutes from './routes/courses.js';
-import cronRoutes from './routes/cron.js';
-import batchRoutes from './routes/batches.js';
-import creditRoutes from './routes/credits.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
+import { authenticate, authorize } from './middleware/auth.js';
+import adminDashboardRoutes from './routes/admin/dashboard.js';
+import adminStudentsRoutes from './routes/admin/students.js';
+import adminEnrollmentsRouter from './routes/admin/enrollments.js';
+import adminCoursesRoutes from './routes/admin/courses.js';
+import adminBatchesRoutes from './routes/admin/batches.js';
+import adminFeesRoutes from './routes/admin/fees.js';
+import adminLeadsRoutes from './routes/admin/leads.js';
+
+// Nest enrollment routes under students/:id/enrollments
+adminStudentsRoutes.use('/:id/enrollments', adminEnrollmentsRouter);
 
 const app = express();
 
@@ -45,13 +49,13 @@ app.get('/health', (req, res) => {
 
 // API routes
 app.use('/api/auth', authRoutes);
-app.use('/api/students', studentRoutes);
-app.use('/api/sync', syncRoutes);
-app.use('/api/fees', feeRoutes);
-app.use('/api/courses', courseRoutes);
-app.use('/api/cron', cronRoutes);
-app.use('/api/batches', batchRoutes);
-app.use('/api/credits', creditRoutes);
+// V2 admin routes (all require authentication)
+app.use('/api/v2/dashboard', authenticate, authorize('admin', 'superadmin'), adminDashboardRoutes);
+app.use('/api/v2/students', authenticate, authorize('admin', 'superadmin'), adminStudentsRoutes);
+app.use('/api/v2/courses', authenticate, authorize('admin', 'superadmin'), adminCoursesRoutes);
+app.use('/api/v2/batches', authenticate, authorize('admin', 'superadmin'), adminBatchesRoutes);
+app.use('/api/v2/fees', authenticate, authorize('admin', 'superadmin'), adminFeesRoutes);
+app.use('/api/v2/leads', authenticate, authorize('admin', 'superadmin'), adminLeadsRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -79,7 +83,6 @@ async function startServer() {
       console.log(`🚀 Server running on port ${config.port}`);
       console.log(`📱 Environment: ${config.nodeEnv}`);
       console.log(`🌐 Health check: http://localhost:${config.port}/health`);
-      console.log(`⏰ Cron endpoint: POST http://localhost:${config.port}/api/cron/update-overdue-fees`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);

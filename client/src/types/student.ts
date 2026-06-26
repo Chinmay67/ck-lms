@@ -15,8 +15,13 @@ export interface Student {
   skillLevel?: 1 | 2 | 3;
   stage?: 'beginner' | 'intermediate' | 'advanced';
   level?: 1 | 2 | 3;
+  courseId?: string | { _id?: string; id?: string; displayName?: string; courseName?: string; stages?: Array<{ stageNumber: number; stageName: string }> } | null;
+  stageNumber?: number | null;
+  levelNumber?: number | null;
   batch?: string;
-  batchId?: string | null;
+  batchId?: string | { _id?: string; id?: string; batchName?: string; batchCode?: string } | null;
+  currentEnrollmentId?: string | null;
+  creditBalance?: number;
   referredBy?: string;
   emailId?: string;
   enrollmentDate: string;
@@ -29,6 +34,7 @@ export interface Student {
 // Extended type for student updates that includes transient fields
 export type StudentUpdate = Partial<Student> & {
   changeType?: 'progression' | 'correction';
+  monthlyFee?: number;
 };
 
 export interface ApiResponse<T = any> {
@@ -63,15 +69,27 @@ export interface StudentFilters {
 
 export interface FeeRecord {
   _id: string;
+  id?: string;
   studentId: string;
+  enrollmentId?: string;
   studentName: string;
-  stage: 'beginner' | 'intermediate' | 'advanced';
-  level: 1 | 2 | 3;
+  courseId?: string;
+  stage?: 'beginner' | 'intermediate' | 'advanced';
+  level?: 1 | 2 | 3;
+  stageNumber?: number;
+  levelNumber?: number;
+  invoiceMonth?: string;
   feeMonth: string;
   dueDate: string;
-  status: 'upcoming' | 'paid' | 'overdue' | 'partially_paid';
+  status: 'upcoming' | 'paid' | 'overdue' | 'partially_paid' | 'void';
+  amount?: number;
   feeAmount: number;
+  originalFeeAmount?: number;
+  discountPercentage?: number;
+  discountReason?: string;
   paidAmount: number;
+  allocatedAmount?: number;
+  waivedAmount?: number;
   paymentDate?: string;
   paymentMethod?: 'cash' | 'online' | 'card' | 'upi' | 'other';
   transactionId?: string;
@@ -81,6 +99,7 @@ export interface FeeRecord {
   createdAt: string;
   updatedAt: string;
   remainingAmount?: number;
+  balanceDue?: number;
   paymentPercentage?: number;
 }
 
@@ -99,14 +118,22 @@ export interface FeeStats {
     intermediate: { collected: number; upcoming: number; overdue: number; students: number; paidStudents: number };
     advanced: { collected: number; upcoming: number; overdue: number; students: number; paidStudents: number };
   };
-  recentPayments: FeeRecord[];
+  recentPayments: Array<{
+    _id: string;
+    studentId: string;
+    studentName: string;
+    amount: number;
+    paymentMethod?: string;
+    paymentDate?: string;
+    transactionId?: string;
+  }>;
   overdueStudents: Array<{
     studentId: string;
     studentName: string;
-    stage: string;
-    level: number;
+    stageNumber?: number;
+    levelNumber?: number;
+    feeMonth?: string;
     overdueAmount: number;
-    overdueMonths: number;
   }>;
 }
 

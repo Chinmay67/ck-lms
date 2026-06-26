@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import type { Batch, CreateBatchData, UpdateBatchData, ScheduleEntry } from '../../types/batch';
-import { BatchAPI } from '../../services/api';
-import { DAY_NAMES, STAGE_OPTIONS, LEVEL_OPTIONS } from '../../types/batch';
+import type { Course } from '../../types/course';
+import { BatchAPI, CourseAPI } from '../../services/api';
+import { DAY_NAMES } from '../../types/batch';
 
 interface BatchModalProps {
   batch: Batch | null;
@@ -14,68 +15,111 @@ interface BatchModalProps {
 
 const BatchModal: React.FC<BatchModalProps> = ({ batch, onClose, onSuccess }) => {
   const isEdit = !!batch;
-  
-  const [formData, setFormData] = useState<CreateBatchData | UpdateBatchData>({
+
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loadingCourses, setLoadingCourses] = useState(false);
+
+  const [formData, setFormData] = useState<{
+    batchName: string;
+    batchCode: string;
+    courseId: string;
+    stageNumber: number | '';
+    levelNumber: number | '';
+    maxStudents: number | null;
+    schedule: ScheduleEntry[];
+    status: string;
+    startDate: string;
+    endDate: string;
+    description: string;
+  }>({
     batchName: batch?.batchName || '',
     batchCode: batch?.batchCode || '',
-    stage: batch?.stage || 'beginner',
-    level: batch?.level || 1,
+    courseId: (batch as any)?.courseId?._id ?? (batch as any)?.courseId ?? '',
+    stageNumber: (batch as any)?.stageNumber ?? '',
+    levelNumber: (batch as any)?.levelNumber ?? '',
     maxStudents: batch?.maxStudents || null,
     schedule: batch?.schedule || [],
     status: batch?.status || 'draft',
     startDate: batch?.startDate ? new Date(batch.startDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
     endDate: batch?.endDate ? new Date(batch.endDate).toISOString().split('T')[0] : '',
-    description: batch?.description || ''
+    description: batch?.description || '',
   });
 
-  const [scheduleItems, setScheduleItems] = useState<ScheduleEntry[]>(
-    batch?.schedule || []
-  );
+  const selectedCourse = courses.find((c) => (c.id || c._id) === formData.courseId) ?? null;
+  const selectedStage = selectedCourse?.stages?.find((s) => s.stageNumber === Number(formData.stageNumber)) ?? null;
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Load courses on mount
+  useEffect(() => {
+    setLoadingCourses(true);
+    CourseAPI.getCourses(true)
+      .then((res) => { if (res.success && res.data) setCourses(res.data); })
+      .catch(console.error)
+      .finally(() => setLoadingCourses(false));
+  }, []);
+
   const handleInputChange = (field: string, value: any) => {
-    setFormData((prev: any) => ({ ...prev, [field]: value }));
+    if (field === 'courseId') {
+      setFormData((prev) => ({ ...prev, courseId: value, stageNumber: '', levelNumber: '' }));
+    } else if (field === 'stageNumber') {
+      setFormData((prev) => ({ ...prev, stageNumber: value ? Number(value) : '', levelNumber: '' }));
+    } else {
+      setFormData((prev: any) => ({ ...prev, [field]: value }));
+    }
   };
 
   const addScheduleItem = () => {
-    setScheduleItems([...scheduleItems, { dayOfWeek: 1, startTime: '10:00' }]);
+    setFormData((prev) => ({ ...prev, schedule: [...prev.schedule, { dayOfWeek: 1, startTime: '10:00' }] }));
   };
 
   const updateScheduleItem = (index: number, field: keyof ScheduleEntry, value: any) => {
-    const updated = [...scheduleItems];
+    const updated = [...formData.schedule];
     updated[index] = { ...updated[index], [field]: value };
-    setScheduleItems(updated);
+    setFormData((prev) => ({ ...prev, schedule: updated }));
   };
 
   const removeScheduleItem = (index: number) => {
-    setScheduleItems(scheduleItems.filter((_, i) => i !== index));
+    setFormData((prev) => ({ ...prev, schedule: prev.schedule.filter((_, i) => i !== index) }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setLoading(true);
 
+    if (!formData.courseId) { setError('Please select a course'); return; }
+    if (!formData.stageNumber) { setError('Please select a stage'); return; }
+    if (!formData.levelNumber) { setError('Please select a level'); return; }
+
+    setLoading(true);
     try {
       const payload = {
-        ...formData,
-        schedule: scheduleItems,
-        maxStudents: formData.maxStudents === null || formData.maxStudents === undefined ? null : Number(formData.maxStudents),
-        endDate: formData.endDate || null
+        batchName: formData.batchName,
+        batchCode: formData.batchCode,
+        courseId: formData.courseId,
+        stageNumber: Number(formData.stageNumber),
+        levelNumber: Number(formData.levelNumber),
+        maxStudents: formData.maxStudents == null ? null : Number(formData.maxStudents),
+        schedule: formData.schedule,
+        status: formData.status,
+        startDate: formData.startDate,
+        endDate: formData.endDate || null,
+        description: formData.description,
       };
 
       let response;
       if (isEdit && batch) {
-        response = await BatchAPI.updateBatch(batch.id, payload as UpdateBatchData);
+        const { courseId: _cid, stageNumber: _sn, levelNumber: _ln, ...updatePayload } = payload;
+        response = await BatchAPI.updateBatch(batch.id, updatePayload as UpdateBatchData);
       } else {
-        response = await BatchAPI.createBatch(payload as CreateBatchData);
+        response = await BatchAPI.createBatch(payload as unknown as CreateBatchData);
       }
 
       if (response.success) {
         onSuccess();
       } else {
-        setError(response.error || 'Operation failed');
+        setError((response as any).error || 'Operation failed');
       }
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Operation failed');
@@ -93,7 +137,7 @@ const BatchModal: React.FC<BatchModalProps> = ({ batch, onClose, onSuccess }) =>
     >
       <form onSubmit={handleSubmit} className="space-y-6">
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          <div className="bg-error-600/10 border border-red-200 text-red-400 px-4 py-3 rounded-lg">
             {error}
           </div>
         )}
@@ -101,7 +145,7 @@ const BatchModal: React.FC<BatchModalProps> = ({ batch, onClose, onSuccess }) =>
         {/* Basic Information */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-secondary mb-1">
               Batch Name *
             </label>
             <Input
@@ -114,7 +158,7 @@ const BatchModal: React.FC<BatchModalProps> = ({ batch, onClose, onSuccess }) =>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-secondary mb-1">
               Batch Code *
             </label>
             <Input
@@ -128,36 +172,55 @@ const BatchModal: React.FC<BatchModalProps> = ({ batch, onClose, onSuccess }) =>
           </div>
         </div>
 
-        {/* Stage and Level */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Course, Stage, Level */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Stage *
-            </label>
+            <label className="block text-sm font-medium text-text-secondary mb-1">Course *</label>
             <select
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={formData.stage}
-              onChange={(e) => handleInputChange('stage', e.target.value)}
+              className="w-full border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary-400 disabled:opacity-60"
+              value={formData.courseId}
+              onChange={(e) => handleInputChange('courseId', e.target.value)}
               required
+              disabled={isEdit}
             >
-              {STAGE_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              <option value="">{loadingCourses ? 'Loading…' : 'Select course'}</option>
+              {courses.map((c) => (
+                <option key={c.id || c._id} value={c.id || c._id}>{c.displayName}</option>
+              ))}
+            </select>
+            {isEdit && <p className="text-xs text-text-tertiary mt-1">Course cannot be changed after creation.</p>}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1">Stage *</label>
+            <select
+              className="w-full border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary-400 disabled:opacity-60"
+              value={formData.stageNumber}
+              onChange={(e) => handleInputChange('stageNumber', e.target.value)}
+              required
+              disabled={!selectedCourse || isEdit}
+            >
+              <option value="">Select stage</option>
+              {(selectedCourse?.stages ?? []).map((s) => (
+                <option key={s.stageNumber} value={s.stageNumber}>{s.stageName}</option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Level *
-            </label>
+            <label className="block text-sm font-medium text-text-secondary mb-1">Level *</label>
             <select
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={formData.level}
-              onChange={(e) => handleInputChange('level', parseInt(e.target.value))}
+              className="w-full border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary-400 disabled:opacity-60"
+              value={formData.levelNumber}
+              onChange={(e) => handleInputChange('levelNumber', e.target.value ? Number(e.target.value) : '')}
               required
+              disabled={!selectedStage || isEdit}
             >
-              {LEVEL_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              <option value="">Select level</option>
+              {(selectedStage?.levels ?? []).map((l) => (
+                <option key={l.levelNumber} value={l.levelNumber}>
+                  Level {l.levelNumber} — ₹{l.feeAmount.toLocaleString()}/mo
+                </option>
               ))}
             </select>
           </div>
@@ -166,7 +229,7 @@ const BatchModal: React.FC<BatchModalProps> = ({ batch, onClose, onSuccess }) =>
         {/* Capacity and Status */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-secondary mb-1">
               Max Students
             </label>
             <Input
@@ -176,15 +239,15 @@ const BatchModal: React.FC<BatchModalProps> = ({ batch, onClose, onSuccess }) =>
               placeholder="Leave empty for unlimited"
               min="1"
             />
-            <p className="text-xs text-gray-500 mt-1">Leave empty for unlimited capacity</p>
+            <p className="text-xs text-text-tertiary mt-1">Leave empty for unlimited capacity</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-secondary mb-1">
               Status *
             </label>
             <select
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary-400"
               value={formData.status}
               onChange={(e) => handleInputChange('status', e.target.value)}
               required
@@ -198,7 +261,7 @@ const BatchModal: React.FC<BatchModalProps> = ({ batch, onClose, onSuccess }) =>
         {/* Dates */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-secondary mb-1">
               Start Date *
             </label>
             <Input
@@ -210,7 +273,7 @@ const BatchModal: React.FC<BatchModalProps> = ({ batch, onClose, onSuccess }) =>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-secondary mb-1">
               End Date
             </label>
             <Input
@@ -218,17 +281,17 @@ const BatchModal: React.FC<BatchModalProps> = ({ batch, onClose, onSuccess }) =>
               value={formData.endDate || ''}
               onChange={(e) => handleInputChange('endDate', e.target.value)}
             />
-            <p className="text-xs text-gray-500 mt-1">Leave empty for ongoing batch</p>
+            <p className="text-xs text-text-tertiary mt-1">Leave empty for ongoing batch</p>
           </div>
         </div>
 
         {/* Description */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-text-secondary mb-1">
             Description
           </label>
           <textarea
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary-400"
             value={formData.description}
             onChange={(e) => handleInputChange('description', e.target.value)}
             rows={3}
@@ -239,7 +302,7 @@ const BatchModal: React.FC<BatchModalProps> = ({ batch, onClose, onSuccess }) =>
         {/* Schedule */}
         <div>
           <div className="flex justify-between items-center mb-3">
-            <label className="block text-sm font-medium text-gray-700">
+            <label className="block text-xs font-medium text-text-secondary">
               Schedule
             </label>
             <Button
@@ -252,16 +315,16 @@ const BatchModal: React.FC<BatchModalProps> = ({ batch, onClose, onSuccess }) =>
             </Button>
           </div>
 
-          {scheduleItems.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-lg">
+          {formData.schedule.length === 0 ? (
+            <p className="text-sm text-text-tertiary text-center py-4 bg-surface-alt rounded-lg">
               No schedule set. Click "Add Session" to add class timings.
             </p>
           ) : (
             <div className="space-y-2">
-              {scheduleItems.map((item, index) => (
-                <div key={index} className="flex gap-2 items-center bg-gray-50 p-3 rounded-lg">
+              {formData.schedule.map((item, index) => (
+                <div key={index} className="flex gap-2 items-center bg-surface-alt p-3 rounded-lg">
                   <select
-                    className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 border border-white/10 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary-400"
                     value={item.dayOfWeek}
                     onChange={(e) => updateScheduleItem(index, 'dayOfWeek', parseInt(e.target.value))}
                   >
@@ -282,7 +345,7 @@ const BatchModal: React.FC<BatchModalProps> = ({ batch, onClose, onSuccess }) =>
                     variant="secondary"
                     size="sm"
                     onClick={() => removeScheduleItem(index)}
-                    className="text-red-600 hover:text-red-700"
+                    className="text-red-600 hover:text-red-400"
                   >
                     Remove
                   </Button>
@@ -293,7 +356,7 @@ const BatchModal: React.FC<BatchModalProps> = ({ batch, onClose, onSuccess }) =>
         </div>
 
         {/* Actions */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+        <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
           <Button
             type="button"
             variant="secondary"

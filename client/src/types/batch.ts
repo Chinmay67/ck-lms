@@ -7,6 +7,9 @@ export interface Batch {
   id: string;
   batchName: string;
   batchCode: string;
+  courseId?: string;
+  stageNumber: number;
+  levelNumber: number;
   stage: 'beginner' | 'intermediate' | 'advanced';
   level: 1 | 2 | 3;
   maxStudents: number | null;
@@ -29,8 +32,11 @@ export interface Batch {
 export interface CreateBatchData {
   batchName: string;
   batchCode: string;
-  stage: 'beginner' | 'intermediate' | 'advanced';
-  level: 1 | 2 | 3;
+  courseId?: string;
+  stageNumber?: number;
+  levelNumber?: number;
+  stage?: 'beginner' | 'intermediate' | 'advanced';
+  level?: 1 | 2 | 3;
   maxStudents: number | null;
   schedule: ScheduleEntry[];
   status: 'active' | 'ended' | 'draft';
@@ -42,6 +48,9 @@ export interface CreateBatchData {
 export interface UpdateBatchData {
   batchName?: string;
   batchCode?: string;
+  courseId?: string;
+  stageNumber?: number;
+  levelNumber?: number;
   stage?: 'beginner' | 'intermediate' | 'advanced';
   level?: 1 | 2 | 3;
   maxStudents?: number | null;
@@ -80,6 +89,8 @@ export interface BatchFilters {
   status?: 'active' | 'ended' | 'draft';
   stage?: 'beginner' | 'intermediate' | 'advanced';
   level?: number;
+  stageNumber?: number;
+  levelNumber?: number;
 }
 
 export const DAY_NAMES = [

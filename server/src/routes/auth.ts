@@ -1,15 +1,25 @@
 import { Router, Request, Response } from 'express';
-import User from '../models/User.js';
+import rateLimit from 'express-rate-limit';
+import User from '../models/v2/User.js';
 import { generateToken, authenticate } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { ApiResponse } from '../types/index.js';
 import { ValidationError, DuplicateError, UnauthorizedError, assert, validate } from '../utils/errors.js';
 
+const authRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many attempts. Please try again after 15 minutes.' },
+});
+
 const router = Router();
 
 // POST /api/auth/register - Register new user
-router.post('/register', asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
-  const { email, password, name, role } = req.body;
+router.post('/register', authRateLimit, asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+  const { email, password, name } = req.body;
+  // role is intentionally not destructured — public registration always creates 'user' role
 
   // Validation with descriptive error messages
   assert.required({ email, password, name }, {
@@ -31,17 +41,12 @@ router.post('/register', asyncHandler(async (req: Request, res: Response<ApiResp
     throw new DuplicateError(`An account with email "${email}" already exists. Please use a different email or try logging in.`);
   }
 
-  // Validate role if provided
-  if (role && !['user', 'admin', 'superadmin'].includes(role)) {
-    throw new ValidationError('Invalid role. Must be one of: user, admin, superadmin');
-  }
-
-  // Create user (default role is 'user' unless specified)
+  // Create user — role is always 'user' for public registration
   const user = await User.create({
     email: email.toLowerCase(),
     password,
     name,
-    role: role || 'user'
+    role: 'user'
   });
 
   // Generate token
@@ -64,7 +69,7 @@ router.post('/register', asyncHandler(async (req: Request, res: Response<ApiResp
 }));
 
 // POST /api/auth/login - Login user
-router.post('/login', asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
+router.post('/login', authRateLimit, asyncHandler(async (req: Request, res: Response<ApiResponse>) => {
   const { email, password } = req.body;
 
   // Validation with descriptive error messages

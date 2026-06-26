@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import User from '../models/User.js';
+import User from '../models/v2/User.js';
 import { IUser } from '../types/index.js';
 
 // Extend Express Request type to include user
@@ -18,7 +18,11 @@ interface JwtPayload {
   role: string;
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'dev-only-secret-change-locally');
+
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET is required in production');
+}
 
 export const authenticate = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -40,7 +44,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     // Get user from database
     const user = await User.findById(decoded.userId);
 
-    if (!user || !user.isActive) {
+    if (!user || !user.isActive || user.deletedAt) {
       res.status(401).json({
         success: false,
         error: 'Invalid token or user is inactive.',

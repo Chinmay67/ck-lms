@@ -1,4 +1,4 @@
-import { FaFilter, FaTimes, FaChevronDown, FaBars } from 'react-icons/fa';
+import { Filter, X, ChevronDown, Menu } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import Button from '../ui/Button';
 import { CourseAPI } from '../../services/api';
@@ -72,15 +72,11 @@ const FilterPanel = ({
     }
   };
 
-  // Get status color
   const getStatusColor = () => {
     switch (selectedStatus) {
-      case 'all':
-        return 'bg-gray-500';
-      case 'active':
-        return 'bg-green-500';
-      case 'inactive':
-        return 'bg-red-500';
+      case 'all':      return 'bg-text-tertiary';
+      case 'active':   return 'bg-accent-400';
+      case 'inactive': return 'bg-red-400';
     }
   };
 
@@ -91,7 +87,7 @@ const FilterPanel = ({
       {/* Desktop Filters */}
       <div className="hidden md:flex items-center gap-4 flex-wrap">
         <div className="flex items-center gap-2 text-text-primary">
-          <FaFilter className="text-primary-400" />
+          <Filter className="text-primary-400 w-4 h-4" />
           <span className="font-semibold text-sm">Filters:</span>
         </div>
 
@@ -100,16 +96,16 @@ const FilterPanel = ({
         <button
           onClick={() => setShowDropdown(!showDropdown)}
           className={`
-            px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 btn-hover
-            flex items-center gap-2 min-w-[180px] justify-between
+            px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150
+            flex items-center gap-2 min-w-[160px] justify-between
             ${selectedCourse !== 'all'
-              ? 'bg-gradient-primary text-white shadow-glow'
-              : 'bg-surface-alt text-text-secondary hover:bg-primary-50 hover:text-primary-600 border border-primary-100/30'
+              ? 'bg-primary-600/20 text-primary-300 border border-primary-600/30'
+              : 'bg-surface-alt text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-white/10'
             }
           `}
         >
           <span>{loading ? 'Loading...' : getSelectedCourseName()}</span>
-          <FaChevronDown className={`transition-transform duration-200 ${showDropdown ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showDropdown ? 'rotate-180' : ''}`} />
         </button>
 
         {showDropdown && (
@@ -118,17 +114,17 @@ const FilterPanel = ({
               className="fixed inset-0 z-10" 
               onClick={() => setShowDropdown(false)}
             />
-            <div className="absolute top-full left-0 mt-2 bg-surface border border-border rounded-xl shadow-lg z-20 min-w-[200px] overflow-hidden">
+            <div className="absolute top-full left-0 mt-1.5 bg-surface-alt border border-white/10 rounded-xl shadow-navy-lg z-20 min-w-[200px] overflow-hidden">
               <button
                 onClick={() => {
                   onCourseChange('all');
                   setShowDropdown(false);
                 }}
                 className={`
-                  w-full px-4 py-3 text-left text-sm font-semibold transition-colors
-                  ${selectedCourse === 'all' 
-                    ? 'bg-primary-100 text-primary-700' 
-                    : 'text-text-secondary hover:bg-surface-alt'
+                  w-full px-4 py-2.5 text-left text-sm transition-colors
+                  ${selectedCourse === 'all'
+                    ? 'bg-primary-600/15 text-primary-300'
+                    : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                   }
                 `}
               >
@@ -142,10 +138,10 @@ const FilterPanel = ({
                     setShowDropdown(false);
                   }}
                   className={`
-                    w-full px-4 py-3 text-left text-sm font-semibold transition-colors
-                    ${selectedCourse === course.courseName 
-                      ? 'bg-primary-100 text-primary-700' 
-                      : 'text-text-secondary hover:bg-surface-alt'
+                    w-full px-4 py-2.5 text-left text-sm transition-colors
+                    ${selectedCourse === course.courseName
+                      ? 'bg-primary-600/15 text-primary-300'
+                      : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                     }
                   `}
                 >
@@ -161,11 +157,11 @@ const FilterPanel = ({
       <button
         onClick={handleStatusToggle}
         className={`
-          px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 btn-hover
+          px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150
           flex items-center gap-2
           ${selectedStatus !== 'all'
-            ? 'bg-gradient-primary text-white shadow-glow'
-            : 'bg-surface-alt text-text-secondary hover:bg-primary-50 hover:text-primary-600 border border-primary-100/30'
+            ? 'bg-primary-600/20 text-primary-300 border border-primary-600/30'
+            : 'bg-surface-alt text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-white/10'
           }
         `}
       >
@@ -180,7 +176,7 @@ const FilterPanel = ({
             size="sm"
             onClick={onClearFilters}
           >
-            <FaTimes />
+            <X className="w-3.5 h-3.5" />
             Clear Filters
           </Button>
         )}
@@ -194,13 +190,13 @@ const FilterPanel = ({
             w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200
             flex items-center justify-between gap-2
             ${hasActiveFilters
-              ? 'bg-gradient-primary text-white shadow-glow'
-              : 'bg-surface-alt text-text-secondary border border-primary-100/30'
+              ? 'bg-primary-600/20 text-primary-300 border border-primary-600/30'
+              : 'bg-surface-alt text-text-secondary border border-white/10'
             }
           `}
         >
           <div className="flex items-center gap-2">
-            <FaBars />
+            <Menu className="w-4 h-4" />
             <span>Filters</span>
             {hasActiveFilters && (
               <span className="bg-white/20 px-2 py-0.5 rounded-full text-xs">
@@ -208,12 +204,12 @@ const FilterPanel = ({
               </span>
             )}
           </div>
-          <FaChevronDown className={`transition-transform duration-200 ${showMobileFilters ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showMobileFilters ? 'rotate-180' : ''}`} />
         </button>
 
         {/* Mobile Filters Dropdown */}
         {showMobileFilters && (
-          <div className="mt-3 space-y-3 p-4 bg-surface rounded-xl border border-primary-100/30 shadow-lg">
+          <div className="mt-3 space-y-3 p-4 bg-surface-alt rounded-xl border border-white/10 shadow-navy-lg">
             {/* Course Filter */}
             <div>
               <label className="block text-xs font-semibold text-text-secondary mb-2">
@@ -223,16 +219,16 @@ const FilterPanel = ({
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
                   className={`
-                    w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200
+                    w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150
                     flex items-center gap-2 justify-between
                     ${selectedCourse !== 'all'
-                      ? 'bg-primary-100 text-primary-700 border-2 border-primary-300'
-                      : 'bg-surface-alt text-text-secondary border border-primary-100/30'
+                      ? 'bg-primary-600/15 text-primary-300 border border-primary-600/30'
+                      : 'bg-surface text-text-secondary border border-white/10'
                     }
                   `}
                 >
                   <span>{loading ? 'Loading...' : getSelectedCourseName()}</span>
-                  <FaChevronDown className={`transition-transform duration-200 ${showDropdown ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showDropdown ? 'rotate-180' : ''}`} />
                 </button>
 
                 {showDropdown && (
@@ -241,17 +237,17 @@ const FilterPanel = ({
                       className="fixed inset-0 z-10" 
                       onClick={() => setShowDropdown(false)}
                     />
-                    <div className="absolute top-full left-0 mt-2 bg-surface border border-border rounded-xl shadow-lg z-20 w-full overflow-hidden">
+                    <div className="absolute top-full left-0 mt-1.5 bg-surface-alt border border-white/10 rounded-xl shadow-navy-lg z-20 w-full overflow-hidden">
                       <button
                         onClick={() => {
                           onCourseChange('all');
                           setShowDropdown(false);
                         }}
                         className={`
-                          w-full px-4 py-3 text-left text-sm font-semibold transition-colors
-                          ${selectedCourse === 'all' 
-                            ? 'bg-primary-100 text-primary-700' 
-                            : 'text-text-secondary hover:bg-surface-alt'
+                          w-full px-4 py-2.5 text-left text-sm transition-colors
+                          ${selectedCourse === 'all'
+                            ? 'bg-primary-600/15 text-primary-300'
+                            : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                           }
                         `}
                       >
@@ -265,10 +261,10 @@ const FilterPanel = ({
                             setShowDropdown(false);
                           }}
                           className={`
-                            w-full px-4 py-3 text-left text-sm font-semibold transition-colors
-                            ${selectedCourse === course.courseName 
-                              ? 'bg-primary-100 text-primary-700' 
-                              : 'text-text-secondary hover:bg-surface-alt'
+                            w-full px-4 py-2.5 text-left text-sm transition-colors
+                            ${selectedCourse === course.courseName
+                              ? 'bg-primary-600/15 text-primary-300'
+                              : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                             }
                           `}
                         >
@@ -289,11 +285,11 @@ const FilterPanel = ({
               <button
                 onClick={handleStatusToggle}
                 className={`
-                  w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200
+                  w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150
                   flex items-center gap-2 justify-center
                   ${selectedStatus !== 'all'
-                    ? 'bg-primary-100 text-primary-700 border-2 border-primary-300'
-                    : 'bg-surface-alt text-text-secondary border border-primary-100/30'
+                    ? 'bg-primary-600/15 text-primary-300 border border-primary-600/30'
+                    : 'bg-surface text-text-secondary border border-white/10'
                   }
                 `}
               >
@@ -309,9 +305,9 @@ const FilterPanel = ({
                   onClearFilters();
                   setShowMobileFilters(false);
                 }}
-                className="w-full px-4 py-3 rounded-xl text-sm font-semibold bg-red-50 text-red-700 hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
+                className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-error-600/10 text-red-400 hover:bg-error-600/20 transition-colors flex items-center justify-center gap-2"
               >
-                <FaTimes />
+                <X className="w-4 h-4" />
                 Clear All Filters
               </button>
             )}

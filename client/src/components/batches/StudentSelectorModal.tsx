@@ -27,7 +27,7 @@ const StudentSelectorModal: React.FC<StudentSelectorModalProps> = ({ batch, onCl
     try {
       setLoading(true);
       setError(null);
-      const response = await BatchAPI.getEligibleStudents(batch.id);
+      const response = await BatchAPI.getEligibleStudents(batch.id, batch.stageNumber, batch.levelNumber);
       if (response.success && response.data) {
         setStudents(response.data);
       }
@@ -109,17 +109,17 @@ const StudentSelectorModal: React.FC<StudentSelectorModalProps> = ({ batch, onCl
     >
       <div className="space-y-4">
         {/* Capacity Info */}
-        <div className="bg-gray-50 p-3 rounded-lg flex items-center justify-between">
+        <div className="bg-surface-alt p-3 rounded-lg flex items-center justify-between">
           <div className="text-sm">
-            <span className="text-gray-600">Current capacity:</span>
+            <span className="text-text-secondary">Current capacity:</span>
             <span className="ml-2 font-semibold">
               {currentCount}{maxStudents ? ` / ${maxStudents}` : ' (unlimited)'}
             </span>
           </div>
-          <div className={`text-sm font-medium ${exceedsCapacity ? 'text-red-600' : 'text-green-600'}`}>
+          <div className={`text-sm font-medium ${exceedsCapacity ? 'text-red-600' : 'text-accent-400'}`}>
             {selectedCount} selected
             {maxStudents && (
-              <span className="text-gray-500 ml-1">
+              <span className="text-text-tertiary ml-1">
                 • {availableSlots === Infinity ? '∞' : availableSlots} slot{availableSlots !== 1 ? 's' : ''} available
               </span>
             )}
@@ -127,7 +127,7 @@ const StudentSelectorModal: React.FC<StudentSelectorModalProps> = ({ batch, onCl
         </div>
 
         {exceedsCapacity && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm">
+          <div className="bg-error-600/10 border border-red-200 text-red-400 px-4 py-2 rounded-lg text-sm">
             ⚠️ Selection exceeds available capacity. Please select at most {availableSlots} student{availableSlots !== 1 ? 's' : ''}.
           </div>
         )}
@@ -165,48 +165,48 @@ const StudentSelectorModal: React.FC<StudentSelectorModalProps> = ({ batch, onCl
         {loading ? (
           <div className="text-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="text-gray-600 mt-2">Loading eligible students...</p>
+            <p className="text-text-secondary mt-2">Loading eligible students...</p>
           </div>
         ) : error ? (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          <div className="bg-error-600/10 border border-red-200 text-red-400 px-4 py-3 rounded-lg">
             {error}
           </div>
         ) : filteredStudents.length === 0 ? (
-          <div className="text-center py-8 bg-gray-50 rounded-lg">
-            <p className="text-gray-600">
+          <div className="text-center py-8 bg-surface-alt rounded-lg">
+            <p className="text-text-secondary">
               {searchQuery 
                 ? 'No students match your search criteria.' 
                 : 'No eligible students found for this batch\'s stage and level.'}
             </p>
           </div>
         ) : (
-          <div className="border border-gray-200 rounded-lg overflow-hidden max-h-96 overflow-y-auto">
+          <div className="border border-white/10 rounded-lg overflow-hidden max-h-96 overflow-y-auto">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50 sticky top-0">
+              <thead className="bg-surface-alt sticky top-0">
                 <tr>
                   <th className="w-12 px-4 py-3 text-left">
                     <span className="sr-only">Select</span>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
                     Name
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
                     Email
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
                     Phone
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
                     Current Batch
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-surface divide-y divide-gray-200">
                 {/* Unassigned students first */}
                 {unassignedStudents.map((student) => (
                   <tr 
                     key={student._id} 
-                    className={`hover:bg-gray-50 cursor-pointer ${selectedIds.has(student._id) ? 'bg-blue-50' : ''}`}
+                    className={`hover:bg-surface-alt cursor-pointer ${selectedIds.has(student._id) ? 'bg-primary-600/10' : ''}`}
                     onClick={() => toggleSelection(student._id)}
                   >
                     <td className="px-4 py-3">
@@ -214,23 +214,23 @@ const StudentSelectorModal: React.FC<StudentSelectorModalProps> = ({ batch, onCl
                         type="checkbox"
                         checked={selectedIds.has(student._id)}
                         onChange={() => toggleSelection(student._id)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        className="h-4 w-4 text-primary-400 focus:ring-primary-400 border-white/10 rounded"
                         onClick={(e) => e.stopPropagation()}
                       />
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
+                      <div className="text-sm font-medium text-text-primary">
                         {student.studentName}
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="text-sm text-gray-600">{student.email}</div>
+                      <div className="text-sm text-text-secondary">{student.email}</div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="text-sm text-gray-600">{student.phone || '-'}</div>
+                      <div className="text-sm text-text-secondary">{student.phone || '-'}</div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <Badge className="bg-green-100 text-green-800">
+                      <Badge className="bg-accent-600/15 text-accent-400">
                         Unassigned
                       </Badge>
                     </td>
@@ -240,8 +240,8 @@ const StudentSelectorModal: React.FC<StudentSelectorModalProps> = ({ batch, onCl
                 {/* Divider if both sections have items */}
                 {unassignedStudents.length > 0 && assignedStudents.length > 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-2 bg-gray-100">
-                      <span className="text-xs font-medium text-gray-500 uppercase">
+                    <td colSpan={5} className="px-4 py-2 bg-surface-hover">
+                      <span className="text-xs font-medium text-text-tertiary uppercase">
                         Students in other batches (will be transferred)
                       </span>
                     </td>
@@ -252,7 +252,7 @@ const StudentSelectorModal: React.FC<StudentSelectorModalProps> = ({ batch, onCl
                 {assignedStudents.map((student) => (
                   <tr 
                     key={student._id} 
-                    className={`hover:bg-gray-50 cursor-pointer ${selectedIds.has(student._id) ? 'bg-yellow-50' : ''}`}
+                    className={`hover:bg-surface-alt cursor-pointer ${selectedIds.has(student._id) ? 'bg-yellow-50' : ''}`}
                     onClick={() => toggleSelection(student._id)}
                   >
                     <td className="px-4 py-3">
@@ -260,20 +260,20 @@ const StudentSelectorModal: React.FC<StudentSelectorModalProps> = ({ batch, onCl
                         type="checkbox"
                         checked={selectedIds.has(student._id)}
                         onChange={() => toggleSelection(student._id)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        className="h-4 w-4 text-primary-400 focus:ring-primary-400 border-white/10 rounded"
                         onClick={(e) => e.stopPropagation()}
                       />
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
+                      <div className="text-sm font-medium text-text-primary">
                         {student.studentName}
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="text-sm text-gray-600">{student.email}</div>
+                      <div className="text-sm text-text-secondary">{student.email}</div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="text-sm text-gray-600">{student.phone || '-'}</div>
+                      <div className="text-sm text-text-secondary">{student.phone || '-'}</div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <Badge className="bg-yellow-100 text-yellow-800">
@@ -288,8 +288,8 @@ const StudentSelectorModal: React.FC<StudentSelectorModalProps> = ({ batch, onCl
         )}
 
         {/* Actions */}
-        <div className="flex justify-between items-center pt-4 border-t border-gray-200">
-          <div className="text-sm text-gray-500">
+        <div className="flex justify-between items-center pt-4 border-t border-white/10">
+          <div className="text-sm text-text-tertiary">
             {filteredStudents.length} student{filteredStudents.length !== 1 ? 's' : ''} found
             {searchQuery && ` matching "${searchQuery}"`}
           </div>

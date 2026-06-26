@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FormEvent, ChangeEvent } from 'react';
-import { FaGraduationCap, FaLock, FaEnvelope, FaExclamationCircle } from 'react-icons/fa';
+import { GraduationCap, Lock, Mail, AlertCircle } from 'lucide-react';
 import { AuthAPI } from '../services/api';
 import type { LoginCredentials } from '../services/api';
 import Button from './ui/Button';
@@ -94,37 +94,37 @@ export function Login({ onLoginSuccess }: LoginProps) {
       case 'validation':
         return '⚠️';
       default:
-        return <FaExclamationCircle className="inline mr-2" />;
+        return <AlertCircle className="inline mr-2 w-4 h-4" />;
     }
   };
 
   const getErrorBgColor = () => {
     switch (errorType) {
       case 'network':
-        return 'bg-orange-50 border-orange-200 text-orange-700';
+        return 'bg-secondary-600/10 border-secondary-600/20 text-secondary-400';
       case 'validation':
-        return 'bg-yellow-50 border-yellow-200 text-yellow-700';
+        return 'bg-secondary-600/10 border-secondary-600/20 text-secondary-400';
       default:
-        return 'bg-red-50 border-red-200 text-red-700';
+        return 'bg-error-600/10 border-error-600/20 text-red-400';
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-navy-gold p-4">
-      <div className="w-full max-w-md">
-        {/* Logo Section */}
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="w-full max-w-sm">
+        {/* Logo */}
         <div className="text-center mb-8 animate-slide-down">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-secondary rounded-2xl shadow-gold-lg mb-4">
-            <FaGraduationCap className="text-white text-4xl" />
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-primary-600 rounded-lg shadow-navy mb-4">
+            <GraduationCap className="text-white w-8 h-8" />
           </div>
-          <h1 className="text-4xl font-bold text-white mb-2">GyanVibe</h1>
-          <p className="text-primary-100 font-medium">Learning Management System</p>
+          <h1 className="text-2xl font-bold text-text-primary mb-1 tracking-tight">Chess Klub</h1>
+          <p className="text-text-tertiary text-sm">Admin Operations Panel</p>
         </div>
 
-        <Card className="p-8 space-y-6 shadow-navy-lg border border-primary-100/20">
+        <Card variant="elevated" className="p-6 space-y-5">
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-text-primary mb-2">Welcome Back</h2>
-            <p className="text-text-secondary">Sign in to your account</p>
+            <h2 className="text-lg font-semibold text-text-primary mb-1 tracking-tight">Welcome back</h2>
+            <p className="text-text-tertiary text-sm">Sign in to your account</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -135,46 +135,36 @@ export function Login({ onLoginSuccess }: LoginProps) {
               </div>
             )}
 
-            <div className="space-y-2">
-              <label htmlFor="email" className="block text-sm font-semibold text-text-primary">
+            <div className="space-y-1.5">
+              <label htmlFor="email" className="block text-xs font-medium text-text-secondary tracking-wide">
                 Email Address
               </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FaEnvelope className="text-text-tertiary" />
-                </div>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="admin@chessklub.com"
-                  value={credentials.email}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => setCredentials({ ...credentials, email: e.target.value })}
-                  required
-                  disabled={loading}
-                  className="w-full pl-10"
-                />
-              </div>
+              <Input
+                id="email"
+                type="email"
+                placeholder="admin@chessklub.com"
+                value={credentials.email}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setCredentials({ ...credentials, email: e.target.value })}
+                required
+                disabled={loading}
+                leftIcon={<Mail className="w-4 h-4" />}
+              />
             </div>
 
-            <div className="space-y-2">
-              <label htmlFor="password" className="block text-sm font-semibold text-text-primary">
+            <div className="space-y-1.5">
+              <label htmlFor="password" className="block text-xs font-medium text-text-secondary tracking-wide">
                 Password
               </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FaLock className="text-text-tertiary" />
-                </div>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Enter your password"
-                  value={credentials.password}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => setCredentials({ ...credentials, password: e.target.value })}
-                  required
-                  disabled={loading}
-                  className="w-full pl-10"
-                />
-              </div>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Enter your password"
+                value={credentials.password}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setCredentials({ ...credentials, password: e.target.value })}
+                required
+                disabled={loading}
+                leftIcon={<Lock className="w-4 h-4" />}
+              />
             </div>
 
             <Button
@@ -188,8 +178,8 @@ export function Login({ onLoginSuccess }: LoginProps) {
           </form>
         </Card>
 
-        <p className="text-center text-primary-200 text-sm mt-6">
-          © 2024 GyanVibe. All rights reserved.
+        <p className="text-center text-text-tertiary text-xs mt-6">
+          Chess Klub LMS
         </p>
       </div>
     </div>

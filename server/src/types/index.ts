@@ -7,6 +7,7 @@ export interface IUser extends Document {
   name: string;
   role: 'user' | 'admin' | 'superadmin';
   isActive: boolean;
+  deletedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;

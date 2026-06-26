@@ -15,7 +15,7 @@ const SkeletonLoader = ({
     switch (type) {
       case 'card':
         return (
-          <div className={`bg-surface rounded-xl p-6 shadow-navy border border-primary-100/20 ${className}`}>
+          <div className={`bg-surface rounded-lg p-6 shadow-navy border border-primary-500/20 ${className}`}>
             <div className="flex items-center space-x-4 mb-4">
               <div className={`${baseClass} w-12 h-12 rounded-full`}></div>
               <div className="flex-1 space-y-2">
@@ -35,7 +35,7 @@ const SkeletonLoader = ({
         return (
           <div className={`space-y-3 ${className}`}>
             {/* Table header */}
-            <div className="flex space-x-4 pb-3 border-b border-primary-100/30">
+            <div className="flex space-x-4 pb-3 border-b border-white/10">
               {[1, 2, 3, 4, 5].map((i) => (
                 <div key={i} className={`${baseClass} h-4 rounded flex-1`}></div>
               ))}

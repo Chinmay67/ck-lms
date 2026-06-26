@@ -126,10 +126,10 @@ const BatchStudentsModal: React.FC<BatchStudentsModalProps> = ({ batch, onClose,
 
   const getStageColor = (stage: string) => {
     switch (stage) {
-      case 'beginner': return 'bg-blue-100 text-blue-800';
-      case 'intermediate': return 'bg-purple-100 text-purple-800';
-      case 'advanced': return 'bg-orange-100 text-orange-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'beginner': return 'bg-primary-600/15 text-primary-300';
+      case 'intermediate': return 'bg-warning-600/15 text-secondary-300';
+      case 'advanced': return 'bg-secondary-600/15 text-secondary-300';
+      default: return 'bg-surface-hover text-text-primary';
     }
   };
 
@@ -144,7 +144,7 @@ const BatchStudentsModal: React.FC<BatchStudentsModalProps> = ({ batch, onClose,
         <div className="space-y-4">
           {/* Success Message */}
           {successMessage && (
-            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex items-center gap-2">
+            <div className="bg-accent-600/10 border border-accent-600/20 text-accent-400 px-4 py-3 rounded-lg flex items-center gap-2">
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
@@ -154,33 +154,33 @@ const BatchStudentsModal: React.FC<BatchStudentsModalProps> = ({ batch, onClose,
 
           {/* Error Message */}
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+            <div className="bg-error-600/10 border border-red-200 text-red-400 px-4 py-3 rounded-lg">
               {error}
             </div>
           )}
 
           {/* Batch Info */}
-          <div className="bg-gray-50 p-4 rounded-lg">
+          <div className="bg-surface-alt p-4 rounded-lg">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <span className="text-gray-600">Batch Code:</span>
+                <span className="text-text-secondary">Batch Code:</span>
                 <span className="ml-2 font-medium">{batch.batchCode}</span>
               </div>
               <div>
-                <span className="text-gray-600">Stage/Level:</span>
+                <span className="text-text-secondary">Stage/Level:</span>
                 <Badge className={getStageColor(batch.stage)}>{batch.stage} {batch.level}</Badge>
               </div>
               <div>
-                <span className="text-gray-600">Capacity:</span>
+                <span className="text-text-secondary">Capacity:</span>
                 <span className="ml-2 font-medium">
                   {students.length}{batch.maxStudents ? ` / ${batch.maxStudents}` : ' (unlimited)'}
                 </span>
               </div>
               <div>
-                <span className="text-gray-600">Status:</span>
+                <span className="text-text-secondary">Status:</span>
                 <Badge className={
-                  batch.status === 'active' ? 'bg-green-100 text-green-800' :
-                  batch.status === 'ended' ? 'bg-gray-100 text-gray-800' :
+                  batch.status === 'active' ? 'bg-accent-600/15 text-accent-400' :
+                  batch.status === 'ended' ? 'bg-surface-hover text-text-primary' :
                   'bg-yellow-100 text-yellow-800'
                 }>
                   {batch.status}
@@ -212,11 +212,11 @@ const BatchStudentsModal: React.FC<BatchStudentsModalProps> = ({ batch, onClose,
           {loading ? (
             <div className="text-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="text-gray-600 mt-2">Loading students...</p>
+              <p className="text-text-secondary mt-2">Loading students...</p>
             </div>
           ) : students.length === 0 ? (
-            <div className="text-center py-8 bg-gray-50 rounded-lg">
-              <p className="text-gray-600">No students enrolled in this batch yet.</p>
+            <div className="text-center py-8 bg-surface-alt rounded-lg">
+              <p className="text-text-secondary">No students enrolled in this batch yet.</p>
               {batch.status === 'active' && (
                 <Button 
                   variant="secondary" 
@@ -229,46 +229,46 @@ const BatchStudentsModal: React.FC<BatchStudentsModalProps> = ({ batch, onClose,
               )}
             </div>
           ) : (
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="border border-white/10 rounded-lg overflow-hidden">
               <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+                <thead className="bg-surface-alt">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
                       Name
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
                       Email
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
                       Phone
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
                       Status
                     </th>
                     {batch.status === 'active' && (
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-right text-xs font-medium text-text-tertiary uppercase tracking-wider">
                         Actions
                       </th>
                     )}
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-surface divide-y divide-gray-200">
                   {students.map((student) => (
-                    <tr key={student._id} className="hover:bg-gray-50">
+                    <tr key={student._id} className="hover:bg-surface-alt">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
+                        <div className="text-sm font-medium text-text-primary">
                           {student.studentName}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-600">{student.email}</div>
+                        <div className="text-sm text-text-secondary">{student.email}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-600">{student.phone}</div>
+                        <div className="text-sm text-text-secondary">{student.phone}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <Badge className={
-                          student.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          student.isActive ? 'bg-accent-600/15 text-accent-400' : 'bg-error-600/15 text-red-800'
                         }>
                           {student.isActive ? 'Active' : 'Inactive'}
                         </Badge>
@@ -303,7 +303,7 @@ const BatchStudentsModal: React.FC<BatchStudentsModalProps> = ({ batch, onClose,
           )}
 
           {/* Actions */}
-          <div className="flex justify-end pt-4 border-t border-gray-200">
+          <div className="flex justify-end pt-4 border-t border-white/10">
             <Button variant="secondary" onClick={onClose}>
               Close
             </Button>

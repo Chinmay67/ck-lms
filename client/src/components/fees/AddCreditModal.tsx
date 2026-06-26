@@ -4,7 +4,7 @@ import Button from '../ui/Button';
 import Input from '../ui/Input';
 import type { Student } from '../../types/student';
 import type { Course } from '../../types/course';
-import { CreditAPI, CourseAPI } from '../../services/api';
+import { CreditAPI, CourseAPI, AdminStudentsAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 
 interface AddCreditModalProps {
@@ -16,7 +16,9 @@ interface AddCreditModalProps {
 
 const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalProps) => {
   const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [course, setCourse] = useState<Course | null>(null);
+  const [activeEnrollment, setActiveEnrollment] = useState<any>(null);
   const [credits, setCredits] = useState<Array<{
     dueDate: string;
     paidDate: string;
@@ -28,22 +30,58 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
 
   useEffect(() => {
     if (isOpen && student) {
-      fetchFeeConfig();
-      // Reset form
-      const feeAmt = getFeeAmount();
-      setCredits([{ dueDate: '', paidDate: new Date().toISOString().split('T')[0], amount: feeAmt }]);
+      setActiveEnrollment(null);
+      setCourse(null);
+      setCredits([{ dueDate: '', paidDate: new Date().toISOString().split('T')[0], amount: 0 }]);
       setPaymentMethod('cash');
       setTransactionId('');
       setRemarks('');
+      fetchFeeConfig();
     }
   }, [isOpen, student]);
 
+  // Once enrollment/course is loaded, set the default credit amount
+  useEffect(() => {
+    const fee = getEffectiveFeeAmount();
+    if (fee > 0) {
+      setCredits((prev) => {
+        // Only update the first row if it's still at its default (0 or unchanged)
+        if (prev.length === 1 && (prev[0].amount === 0 || prev[0].amount === fee)) {
+          return [{ ...prev[0], amount: fee }];
+        }
+        return prev;
+      });
+    }
+  }, [activeEnrollment, course]);
+
   const fetchFeeConfig = async () => {
     if (!student) return;
+    const studentId = (student as any).id || student._id;
+
+    // Fetch active enrollment first — it has the discounted monthlyFee
     try {
+      const enrollRes = await AdminStudentsAPI.getEnrollments(studentId);
+      if (enrollRes.success && enrollRes.data) {
+        const list: any[] = Array.isArray(enrollRes.data) ? enrollRes.data : (enrollRes.data as any).data ?? [];
+        const active = list.find((e: any) => !e.endDate);
+        if (active) setActiveEnrollment(active);
+      }
+    } catch {
+      // enrollment fetch failed, fall back to course
+    }
+
+    // Also fetch course for display / fallback
+    try {
+      const courseId = (student as any).courseId?._id || (student as any).courseId;
+      if (courseId) {
+        const response = await CourseAPI.getCourseById(courseId);
+        if (response.success && response.data) {
+          setCourse(response.data);
+          return;
+        }
+      }
       const stage = student.stage || student.skillCategory;
       if (!stage) return;
-      
       const response = await CourseAPI.getCourseByName(stage);
       if (response.success && response.data) {
         setCourse(response.data);
@@ -53,12 +91,22 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
     }
   };
 
-  const getFeeAmount = (): number => {
+  // Gross fee from course level (pre-discount)
+  const getGrossFeeAmount = (): number => {
     if (!course || !student) return 0;
-    const studentLevel = student.level || student.skillLevel || 1;
+    const studentLevel = student.levelNumber ?? student.level ?? student.skillLevel ?? 1;
     const levelConfig = course.levels?.find(l => l.levelNumber === studentLevel) || course.levels?.[0];
     return levelConfig?.feeAmount || 0;
   };
+
+  // Effective fee: enrollment's monthlyFee (post-discount) if available, else gross
+  const getEffectiveFeeAmount = (): number => {
+    if (activeEnrollment?.monthlyFee) return activeEnrollment.monthlyFee;
+    return getGrossFeeAmount();
+  };
+
+  // Legacy alias used by addCreditRow
+  const getFeeAmount = getEffectiveFeeAmount;
 
   const getTotalAmount = (): number => {
     return credits.reduce((sum, credit) => sum + (credit.amount || 0), 0);
@@ -83,30 +131,29 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     if (!student) return;
 
     const studentId = (student as any)?.id || student?._id;
     if (!studentId) {
-      toast.error('Invalid student ID');
+      setFormError('Invalid student — please close and re-open');
       return;
     }
 
     const amount = getTotalAmount();
     if (amount <= 0) {
-      toast.error('Please enter a valid amount');
+      setFormError('Please enter a valid amount greater than zero');
       return;
     }
 
     setLoading(true);
     try {
-      // Create multiple credits
       for (const credit of credits) {
         if (!credit.paidDate) {
-          toast.error('Paid date is required for all credits');
+          setFormError('Paid date is required for all credit rows');
           setLoading(false);
           return;
         }
-
         await CreditAPI.createCredit({
           studentId,
           amount: credit.amount,
@@ -118,13 +165,11 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
           paidDate: credit.paidDate,
         });
       }
-
       toast.success(`${credits.length} credit${credits.length > 1 ? 's' : ''} of ₹${amount.toLocaleString()} added successfully!`);
       onSuccess();
       onClose();
     } catch (error: any) {
-      console.error('Error adding credit:', error);
-      toast.error(error.response?.data?.error || error.message || 'Failed to add credit');
+      setFormError(error.response?.data?.error || error.message || 'Failed to add credit — please try again');
     } finally {
       setLoading(false);
     }
@@ -132,7 +177,6 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
 
   if (!student) return null;
 
-  const feeAmount = getFeeAmount();
   const totalAmount = getTotalAmount();
 
   return (
@@ -143,6 +187,12 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
       size="md"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {formError && (
+          <div className="flex items-start gap-2 px-3 py-2.5 bg-error-600/10 border border-error-600/20 rounded-lg">
+            <svg className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+            <p className="text-sm text-red-400">{formError}</p>
+          </div>
+        )}
         {/* Info Banner */}
         <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
           <div className="flex items-start gap-2">
@@ -157,23 +207,33 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
         </div>
 
         {/* Student Info */}
-        <div className="p-3 bg-gray-50 rounded-lg">
+        <div className="p-3 bg-surface-alt rounded-lg">
           <div className="grid grid-cols-2 gap-2 text-sm">
             <div>
-              <span className="text-gray-500">Student:</span>
+              <span className="text-text-tertiary">Student:</span>
               <span className="ml-2 font-medium">{student.studentName}</span>
             </div>
             <div>
-              <span className="text-gray-500">Stage:</span>
-              <span className="ml-2 font-medium capitalize">{student.stage || student.skillCategory || 'N/A'}</span>
+              <span className="text-text-tertiary">Stage:</span>
+              <span className="ml-2 font-medium capitalize">
+                {student.stage || (student.stageNumber ? `Stage ${student.stageNumber}` : student.skillCategory) || 'N/A'}
+              </span>
             </div>
             <div>
-              <span className="text-gray-500">Level:</span>
-              <span className="ml-2 font-medium">{student.level || student.skillLevel || 1}</span>
+              <span className="text-text-tertiary">Level:</span>
+              <span className="ml-2 font-medium">{student.levelNumber ?? student.level ?? student.skillLevel ?? 1}</span>
             </div>
             <div>
-              <span className="text-gray-500">Monthly Fee:</span>
-              <span className="ml-2 font-medium">₹{feeAmount.toLocaleString()}</span>
+              <span className="text-text-tertiary">Monthly Fee:</span>
+              <span className="ml-2 font-medium">₹{getEffectiveFeeAmount().toLocaleString()}</span>
+              {activeEnrollment && activeEnrollment.discountType && activeEnrollment.discountType !== 'none' && (
+                <span className="ml-2 text-xs text-emerald-400">
+                  ({activeEnrollment.discountType === 'percentage'
+                    ? `-${activeEnrollment.discountPct}%`
+                    : `-₹${activeEnrollment.discountAmount?.toLocaleString()}`
+                  } discount applied)
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -181,7 +241,7 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
         {/* Credit Entries */}
         <div className="space-y-3">
           <div className="flex justify-between items-center">
-            <label className="block text-sm font-medium text-gray-700">
+            <label className="block text-xs font-medium text-text-secondary">
               Credit Entries
             </label>
             <Button
@@ -195,14 +255,14 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
           </div>
 
           {credits.map((credit, index) => (
-            <div key={index} className="p-3 border border-gray-200 rounded-lg space-y-2">
+            <div key={index} className="p-3 border border-white/10 rounded-lg space-y-2">
               <div className="flex justify-between items-center mb-2">
-                <span className="text-xs font-medium text-gray-500">Entry {index + 1}</span>
+                <span className="text-xs font-medium text-text-tertiary">Entry {index + 1}</span>
                 {credits.length > 1 && (
                   <button
                     type="button"
                     onClick={() => removeCreditRow(index)}
-                    className="text-red-500 hover:text-red-700 text-xs"
+                    className="text-red-500 hover:text-red-400 text-xs"
                   >
                     Remove
                   </button>
@@ -211,33 +271,33 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
 
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1">Due Date (Optional)</label>
+                  <label className="block text-xs text-text-secondary mb-1">Due Date (Optional)</label>
                   <input
                     type="date"
                     value={credit.dueDate}
                     onChange={(e) => updateCreditRow(index, 'dueDate', e.target.value)}
-                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    className="w-full px-2 py-1.5 text-sm border border-white/10 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1">Paid Date *</label>
+                  <label className="block text-xs text-text-secondary mb-1">Paid Date *</label>
                   <input
                     type="date"
                     value={credit.paidDate}
                     onChange={(e) => updateCreditRow(index, 'paidDate', e.target.value)}
-                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    className="w-full px-2 py-1.5 text-sm border border-white/10 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1">Amount *</label>
+                  <label className="block text-xs text-text-secondary mb-1">Amount *</label>
                   <input
                     type="number"
                     value={credit.amount}
                     onChange={(e) => updateCreditRow(index, 'amount', parseFloat(e.target.value) || 0)}
-                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    className="w-full px-2 py-1.5 text-sm border border-white/10 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
                     min="0"
                     step="1"
                     required
@@ -249,10 +309,10 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
         </div>
 
         {/* Total Amount Display */}
-        <div className="p-4 bg-primary-50 border border-primary-200 rounded-lg">
+        <div className="p-4 bg-primary-600/10 border border-primary-200 rounded-lg">
           <div className="flex justify-between items-center">
-            <span className="text-primary-700 font-medium">Total Credit Amount:</span>
-            <span className="text-2xl font-bold text-primary-700">₹{totalAmount.toLocaleString()}</span>
+            <span className="text-primary-300 font-medium">Total Credit Amount:</span>
+            <span className="text-2xl font-bold text-primary-300">₹{totalAmount.toLocaleString()}</span>
           </div>
           <p className="text-xs text-primary-600 mt-1">
             {credits.length} entr{credits.length > 1 ? 'ies' : 'y'} totaling ₹{totalAmount.toLocaleString()}
@@ -262,13 +322,13 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
         {/* Payment Details */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-secondary mb-1">
               Payment Method
             </label>
             <select
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value as any)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full px-3 h-9 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               <option value="cash">Cash</option>
               <option value="upi">UPI</option>
@@ -291,7 +351,7 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
 
         {/* Remarks */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-text-secondary mb-1">
             Remarks (Optional)
           </label>
           <textarea
@@ -299,7 +359,7 @@ const AddCreditModal = ({ isOpen, onClose, student, onSuccess }: AddCreditModalP
             onChange={(e) => setRemarks(e.target.value)}
             rows={2}
             placeholder="Any additional notes..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="w-full px-3 h-9 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
         </div>
 

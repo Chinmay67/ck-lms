@@ -2,14 +2,11 @@ import { useState, useEffect } from 'react';
 import type { FeeStats } from '../../types/student';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { FaUsers, FaCheckCircle, FaClock, FaExclamationTriangle, FaHourglassHalf, FaUpload } from 'react-icons/fa';
-import { BulkFeeUploadModal } from './BulkFeeUploadModal';
-import { formatFeeMonth } from '../../utils/dateFormatter';
+import { Users, CheckCircle2, Clock, AlertTriangle, Hourglass } from 'lucide-react';
 
 const FeesOverviewDashboard = () => {
   const [stats, setStats] = useState<FeeStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
 
   useEffect(() => {
     fetchFeeStats();
@@ -18,9 +15,28 @@ const FeesOverviewDashboard = () => {
   const fetchFeeStats = async () => {
     try {
       setLoading(true);
-      const response = await api.get<{ success: boolean; data: FeeStats }>('/fees/stats');
+      const response = await api.get<{ success: boolean; data: any }>('/v2/dashboard');
       if (response.data.success && response.data.data) {
-        setStats(response.data.data);
+        const dashboard = response.data.data;
+        const stageBD = dashboard?.stageBreakdown ?? {};
+        setStats({
+          totalCollected: dashboard?.fees?.totalCollected ?? 0,
+          totalUpcoming: dashboard?.fees?.totalOutstanding ?? 0,
+          totalOverdue: dashboard?.fees?.totalOverdue ?? 0,
+          totalPartiallyPaid: dashboard?.fees?.totalPartiallyPaid ?? 0,
+          totalStudents: (dashboard?.students?.active ?? 0) + (dashboard?.students?.inactive ?? 0),
+          paidStudents: dashboard?.fees?.paidStudents ?? 0,
+          upcomingStudents: dashboard?.fees?.upcomingStudents ?? 0,
+          overdueStudentsCount: dashboard?.overdueStudents?.length ?? 0,
+          partiallyPaidStudents: dashboard?.fees?.partialStudents ?? 0,
+          stageBreakdown: {
+            beginner: stageBD.beginner ?? { collected: 0, upcoming: 0, overdue: 0, students: 0, paidStudents: 0 },
+            intermediate: stageBD.intermediate ?? { collected: 0, upcoming: 0, overdue: 0, students: 0, paidStudents: 0 },
+            advanced: stageBD.advanced ?? { collected: 0, upcoming: 0, overdue: 0, students: 0, paidStudents: 0 },
+          },
+          recentPayments: dashboard?.recentPayments ?? [],
+          overdueStudents: dashboard?.overdueStudents ?? [],
+        });
       }
     } catch (error: any) {
       toast.error(error.message || 'Failed to fetch fee statistics');
@@ -33,42 +49,23 @@ const FeesOverviewDashboard = () => {
     return `${currency} ${(amount ?? 0).toLocaleString()}`;
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'paid':
-        return 'text-accent-600 bg-accent-50';
-      case 'upcoming':
-        return 'text-secondary-600 bg-secondary-50';
-      case 'overdue':
-        return 'text-red-600 bg-red-50';
-      case 'partially_paid':
-        return 'text-primary-600 bg-primary-50';
-      default:
-        return 'text-text-tertiary bg-primary-50';
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-  };
-
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 bg-surface rounded-xl shadow-navy border border-border">
-        <div className="animate-spin rounded-full h-10 w-10 md:h-12 md:w-12 border-b-2 border-primary-600"></div>
-        <p className="mt-4 text-sm text-text-secondary">Loading fee statistics...</p>
+      <div className="flex flex-col items-center justify-center h-64 bg-surface rounded-lg border border-white/7">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-500"></div>
+        <p className="mt-4 text-sm text-text-secondary">Loading fee statistics…</p>
       </div>
     );
   }
 
   if (!stats) {
     return (
-      <div className="text-center py-8 md:py-12 bg-surface rounded-xl shadow-navy border border-border">
-        <FaExclamationTriangle className="w-10 h-10 md:w-12 md:h-12 text-warning-500 mx-auto mb-3" />
-        <p className="text-text-secondary text-sm md:text-base">Unable to load fee statistics.</p>
+      <div className="text-center py-12 bg-surface rounded-lg border border-white/7">
+        <AlertTriangle className="w-10 h-10 text-secondary-500 mx-auto mb-3" />
+        <p className="text-text-secondary text-sm">Unable to load fee statistics.</p>
         <button
           onClick={fetchFeeStats}
-          className="mt-4 px-4 py-2 bg-gradient-primary text-white rounded-lg hover:shadow-glow transition-all text-sm"
+          className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-500 transition-all"
         >
           Try Again
         </button>
@@ -76,254 +73,189 @@ const FeesOverviewDashboard = () => {
     );
   }
 
+  const totalStudents = stats.totalStudents || 1; // avoid /0
+
   return (
-    <div className="space-y-4 md:space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h2 className="text-xl md:text-2xl font-bold text-text-primary">Fees Overview</h2>
-        <div className="flex gap-2 md:gap-3 w-full sm:w-auto">
-          <button
-            onClick={() => setShowBulkUploadModal(true)}
-            className="flex-1 sm:flex-initial px-3 md:px-4 py-2 bg-gradient-secondary text-white rounded-xl hover:shadow-gold transition-all btn-hover flex items-center justify-center gap-2 text-sm md:text-base"
-          >
-            <FaUpload className="text-sm md:text-base" />
-            <span className="hidden sm:inline">Bulk Upload</span>
-            <span className="sm:hidden">Upload</span>
-          </button>
-          <button
-            onClick={fetchFeeStats}
-            className="flex-1 sm:flex-initial px-3 md:px-4 py-2 bg-gradient-primary text-white rounded-xl hover:shadow-glow transition-all btn-hover text-sm md:text-base"
-          >
-            Refresh
-          </button>
-        </div>
+    <div className="space-y-5">
+      {/* Toolbar */}
+      <div className="flex items-center justify-end gap-2">
+        <button
+          onClick={fetchFeeStats}
+          className="px-3 py-2 bg-surface-alt border border-white/10 text-text-secondary rounded-lg text-sm hover:border-white/20 hover:text-text-primary transition-all"
+        >
+          Refresh
+        </button>
       </div>
 
-      {/* Bulk Upload Modal */}
-      <BulkFeeUploadModal
-        isOpen={showBulkUploadModal}
-        onClose={() => setShowBulkUploadModal(false)}
-        onSuccess={() => {
-          setShowBulkUploadModal(false);
-          fetchFeeStats();
-          toast.success('Fees uploaded successfully!');
-        }}
-      />
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4">
-        <div className="bg-surface rounded-xl shadow-navy p-4 md:p-5 border-l-4 border-primary-600 hover:shadow-lg transition-all duration-200">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs md:text-sm font-medium text-text-secondary mb-1">Total Students</p>
-              <p className="text-xl md:text-2xl lg:text-3xl font-bold text-text-primary">
-                {stats.totalStudents}
-              </p>
+      {/* KPI row */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        {[
+          {
+            label: 'Total Students',
+            value: stats.totalStudents,
+            sub: null,
+            icon: <Users className="w-4 h-4" />,
+            accent: 'border-l-primary-500',
+            iconColor: 'text-primary-400',
+            bar: null,
+          },
+          {
+            label: 'Fees Paid',
+            value: stats.paidStudents,
+            sub: formatCurrency(stats.totalCollected),
+            icon: <CheckCircle2 className="w-4 h-4" />,
+            accent: 'border-l-accent-500',
+            iconColor: 'text-accent-400',
+            bar: { pct: Math.round((stats.paidStudents / totalStudents) * 100), color: 'bg-accent-500' },
+          },
+          {
+            label: 'Upcoming',
+            value: stats.upcomingStudents,
+            sub: formatCurrency(stats.totalUpcoming),
+            icon: <Clock className="w-4 h-4" />,
+            accent: 'border-l-secondary-500',
+            iconColor: 'text-secondary-400',
+            bar: { pct: Math.round((stats.upcomingStudents / totalStudents) * 100), color: 'bg-secondary-500' },
+          },
+          {
+            label: 'Overdue',
+            value: stats.overdueStudentsCount,
+            sub: formatCurrency(stats.totalOverdue),
+            icon: <AlertTriangle className="w-4 h-4" />,
+            accent: 'border-l-red-500',
+            iconColor: 'text-red-400',
+            bar: { pct: Math.round((stats.overdueStudentsCount / totalStudents) * 100), color: 'bg-red-500' },
+          },
+          {
+            label: 'Partial',
+            value: stats.partiallyPaidStudents,
+            sub: formatCurrency(stats.totalPartiallyPaid),
+            icon: <Hourglass className="w-4 h-4" />,
+            accent: 'border-l-warning-500',
+            iconColor: 'text-secondary-400',
+            bar: { pct: Math.round((stats.partiallyPaidStudents / totalStudents) * 100), color: 'bg-secondary-400' },
+          },
+        ].map((card) => (
+          <div key={card.label} className={`bg-surface rounded-lg border border-white/7 p-4 border-l-2 ${card.accent} flex flex-col gap-2`}>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-text-tertiary">{card.label}</p>
+              <span className={card.iconColor + ' opacity-50'}>{card.icon}</span>
             </div>
-            <div className="p-2.5 md:p-3 bg-primary-100 rounded-xl flex-shrink-0">
-              <FaUsers className="w-4 h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-primary-600" />
-            </div>
+            <p className="text-2xl font-bold text-text-primary leading-none">{card.value}</p>
+            {card.sub && <p className={`text-xs font-medium ${card.iconColor}`}>{card.sub}</p>}
+            {card.bar && (
+              <div className="w-full h-1 bg-white/7 rounded-full overflow-hidden mt-auto">
+                <div
+                  className={`h-full rounded-full ${card.bar.color} opacity-70 transition-all duration-500`}
+                  style={{ width: `${Math.min(card.bar.pct, 100)}%` }}
+                />
+              </div>
+            )}
           </div>
-        </div>
-
-        <div className="bg-surface rounded-xl shadow-navy p-4 md:p-5 border-l-4 border-accent-600 hover:shadow-lg transition-all duration-200">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs md:text-sm font-medium text-text-secondary mb-1">Fees Paid</p>
-              <p className="text-xl md:text-2xl lg:text-3xl font-bold text-text-primary">
-                {stats.paidStudents}
-              </p>
-              <p className="text-[10px] md:text-xs text-accent-600 font-medium mt-1.5 truncate">
-                {formatCurrency(stats.totalCollected)}
-              </p>
-            </div>
-            <div className="p-2.5 md:p-3 bg-accent-100 rounded-xl flex-shrink-0">
-              <FaCheckCircle className="w-4 h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-accent-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-surface rounded-xl shadow-navy p-4 md:p-5 border-l-4 border-secondary-600 hover:shadow-lg transition-all duration-200">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs md:text-sm font-medium text-text-secondary mb-1">Upcoming</p>
-              <p className="text-xl md:text-2xl lg:text-3xl font-bold text-text-primary">
-                {stats.upcomingStudents}
-              </p>
-              <p className="text-[10px] md:text-xs text-secondary-600 font-medium mt-1.5 truncate">
-                {formatCurrency(stats.totalUpcoming)}
-              </p>
-            </div>
-            <div className="p-2.5 md:p-3 bg-secondary-100 rounded-xl flex-shrink-0">
-              <FaClock className="w-4 h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-secondary-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-surface rounded-xl shadow-navy p-4 md:p-5 border-l-4 border-error-600 hover:shadow-lg transition-all duration-200">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs md:text-sm font-medium text-text-secondary mb-1">Overdue</p>
-              <p className="text-xl md:text-2xl lg:text-3xl font-bold text-text-primary">
-                {stats.overdueStudentsCount}
-              </p>
-              <p className="text-[10px] md:text-xs text-error-600 font-medium mt-1.5 truncate">
-                {formatCurrency(stats.totalOverdue)}
-              </p>
-            </div>
-            <div className="p-2.5 md:p-3 bg-error-100 rounded-xl flex-shrink-0">
-              <FaExclamationTriangle className="w-4 h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-error-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-surface rounded-xl shadow-navy p-4 md:p-5 border-l-4 border-warning-600 hover:shadow-lg transition-all duration-200">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs md:text-sm font-medium text-text-secondary mb-1">Partially Paid</p>
-              <p className="text-xl md:text-2xl lg:text-3xl font-bold text-text-primary">
-                {stats.partiallyPaidStudents}
-              </p>
-              <p className="text-[10px] md:text-xs text-warning-600 font-medium mt-1.5 truncate">
-                {formatCurrency(stats.totalPartiallyPaid)}
-              </p>
-            </div>
-            <div className="p-2.5 md:p-3 bg-warning-100 rounded-xl flex-shrink-0">
-              <FaHourglassHalf className="w-4 h-4 md:w-5 md:h-5 lg:w-6 lg:h-6 text-warning-600" />
-            </div>
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Stage Breakdown */}
-      <div className="bg-surface rounded-xl shadow-navy p-4 md:p-6 border border-border">
-        <h3 className="text-base md:text-lg font-bold text-text-primary mb-4 md:mb-5 flex items-center gap-2">
-          <div className="w-1 h-5 md:h-6 bg-gradient-primary rounded-full"></div>
-          Stage-wise Breakdown
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
-          {Object.entries(stats.stageBreakdown).map(([stage, data]) => (
-            <div key={stage} className="border border-border rounded-xl p-4 md:p-5 bg-surface-alt hover:shadow-md transition-all duration-200">
-              <h4 className="font-bold text-text-primary mb-3 capitalize text-sm md:text-base flex items-center gap-2">
-                <div className="w-2 h-2 bg-primary-500 rounded-full"></div>
-                {stage}
-              </h4>
-              <div className="space-y-2">
-                <div className="flex justify-between items-center gap-2">
-                  <span className="text-xs md:text-sm text-text-secondary">Total Students:</span>
-                  <span className="text-xs md:text-sm font-bold text-text-primary">{data.students}</span>
+      {/* Stage breakdown — horizontal bar chart */}
+      <div className="bg-surface rounded-lg border border-white/7 p-5">
+        <h3 className="text-xs font-semibold text-text-tertiary uppercase tracking-widest mb-4">Stage Breakdown</h3>
+        <div className="space-y-4">
+          {Object.entries(stats.stageBreakdown).map(([stage, data]) => {
+            const total = (data.collected + data.upcoming + data.overdue) || 1;
+            const collectedPct = Math.round((data.collected / total) * 100);
+            const upcomingPct = Math.round((data.upcoming / total) * 100);
+            const overduePct = Math.max(0, 100 - collectedPct - upcomingPct);
+            return (
+              <div key={stage} className="flex items-center gap-4">
+                <span className="text-xs text-text-secondary capitalize w-24 flex-shrink-0">{stage}</span>
+                <div className="flex-1 flex h-2 rounded-full overflow-hidden bg-white/7 gap-px">
+                  <div className="bg-accent-500/70 transition-all duration-500" style={{ width: `${collectedPct}%` }} />
+                  <div className="bg-secondary-500/50 transition-all duration-500" style={{ width: `${upcomingPct}%` }} />
+                  <div className="bg-red-500/60 transition-all duration-500" style={{ width: `${overduePct}%` }} />
                 </div>
-                <div className="flex justify-between items-center gap-2">
-                  <span className="text-xs md:text-sm text-text-secondary">Fees Paid:</span>
-                  <span className="text-xs md:text-sm font-bold text-accent-600">{data.paidStudents}</span>
-                </div>
-                <div className="flex justify-between items-center gap-2">
-                  <span className="text-xs md:text-sm text-text-secondary">Collected:</span>
-                  <span className="text-xs md:text-sm font-semibold text-accent-600 truncate">
-                    {formatCurrency(data.collected)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center gap-2">
-                  <span className="text-xs md:text-sm text-text-secondary">Upcoming:</span>
-                  <span className="text-xs md:text-sm font-semibold text-secondary-600 truncate">
-                    {formatCurrency(data.upcoming)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center gap-2">
-                  <span className="text-xs md:text-sm text-text-secondary">Overdue:</span>
-                  <span className="text-xs md:text-sm font-semibold text-error-600 truncate">
-                    {formatCurrency(data.overdue)}
-                  </span>
+                <div className="flex gap-3 text-xs flex-shrink-0">
+                  <span className="text-accent-400">{formatCurrency(data.collected)}</span>
+                  <span className="text-text-tertiary">{data.students} students</span>
                 </div>
               </div>
+            );
+          })}
+        </div>
+        <div className="flex gap-4 mt-3 pt-3 border-t border-white/7">
+          {[
+            { color: 'bg-accent-500/70', label: 'Collected' },
+            { color: 'bg-secondary-500/50', label: 'Upcoming' },
+            { color: 'bg-red-500/60', label: 'Overdue' },
+          ].map((l) => (
+            <div key={l.label} className="flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full ${l.color}`} />
+              <span className="text-xs text-text-tertiary">{l.label}</span>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+      {/* Bottom panels */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Recent Payments */}
-        <div className="bg-surface rounded-xl shadow-navy p-4 md:p-6 border border-border">
-          <h3 className="text-base md:text-lg font-bold text-text-primary mb-4 md:mb-5 flex items-center gap-2">
-            <div className="w-1 h-5 md:h-6 bg-gradient-to-b from-accent-500 to-accent-600 rounded-full"></div>
-            Recent Payments
-          </h3>
-          <div className="space-y-0 max-h-64 md:max-h-96 overflow-y-auto custom-scrollbar">
+        <div className="bg-surface rounded-lg border border-white/7 p-5">
+          <h3 className="text-xs font-semibold text-text-tertiary uppercase tracking-widest mb-4">Recent Payments</h3>
+          <div className="space-y-0 max-h-72 overflow-y-auto custom-scrollbar">
             {stats.recentPayments.length > 0 ? (
-              stats.recentPayments.map((payment , _) => (
-                <div key={payment._id} className="border-b border-border py-3 last:border-b-0 hover:bg-accent-50/30 -mx-2 px-2 rounded-lg transition-colors duration-150">
-                  <div className="flex justify-between items-start gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-text-primary text-sm md:text-base truncate">{payment.studentName}</p>
-                      <p className="text-xs md:text-sm text-text-secondary capitalize mt-0.5">
-                        {payment.stage} - Level {payment.level}
-                      </p>
-                      <p className="text-xs text-text-tertiary truncate mt-0.5">{formatFeeMonth(payment.feeMonth)}</p>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="font-bold text-accent-600 text-sm md:text-base whitespace-nowrap">
-                        {formatCurrency(payment.paidAmount)}
-                      </p>
-                      <span className={`inline-block px-2 py-0.5 text-[10px] md:text-xs font-semibold rounded-full mt-1 ${getStatusColor(payment.status)}`}>
-                        {getStatusLabel(payment.status)}
+              stats.recentPayments.map((payment) => (
+                <div key={payment._id} className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-b-0 gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-full bg-accent-600/20 flex items-center justify-center flex-shrink-0">
+                      <span className="text-xs font-semibold text-accent-400">
+                        {payment.studentName?.charAt(0)?.toUpperCase() ?? '?'}
                       </span>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-text-primary truncate">{payment.studentName}</p>
                       {payment.paymentDate && (
-                        <p className="text-[10px] md:text-xs text-text-tertiary mt-1">
-                          {new Date(payment.paymentDate).toLocaleDateString('en-IN', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
+                        <p className="text-xs text-text-tertiary">
+                          {new Date(payment.paymentDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                          {payment.paymentMethod && ` · ${payment.paymentMethod}`}
                         </p>
                       )}
                     </div>
                   </div>
+                  <p className="text-sm font-semibold text-accent-400 flex-shrink-0">{formatCurrency(payment.amount)}</p>
                 </div>
               ))
             ) : (
               <div className="text-center py-8">
-                <FaCheckCircle className="w-10 h-10 text-text-tertiary mx-auto mb-2 opacity-50" />
-                <p className="text-text-secondary text-sm">No recent payments found</p>
+                <CheckCircle2 className="w-8 h-8 text-text-tertiary mx-auto mb-2 opacity-20" />
+                <p className="text-text-tertiary text-xs">No recent payments</p>
               </div>
             )}
           </div>
         </div>
 
         {/* Overdue Students */}
-        <div className="bg-surface rounded-xl shadow-navy p-4 md:p-6 border border-border">
-          <h3 className="text-base md:text-lg font-bold text-text-primary mb-4 md:mb-5 flex items-center gap-2">
-            <div className="w-1 h-5 md:h-6 bg-gradient-to-b from-error-500 to-error-600 rounded-full"></div>
-            Overdue Students
-          </h3>
-          <div className="space-y-0 max-h-64 md:max-h-96 overflow-y-auto custom-scrollbar">
+        <div className="bg-surface rounded-lg border border-white/7 p-5">
+          <h3 className="text-xs font-semibold text-text-tertiary uppercase tracking-widest mb-4">Overdue Students</h3>
+          <div className="space-y-0 max-h-72 overflow-y-auto custom-scrollbar">
             {stats.overdueStudents.length > 0 ? (
               stats.overdueStudents.map((student, index) => (
-                <div key={`${student.studentId}-${index}`} className="border-b border-border py-3 last:border-b-0 hover:bg-error-50/30 -mx-2 px-2 rounded-lg transition-colors duration-150">
-                  <div className="flex justify-between items-start gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-text-primary text-sm md:text-base truncate">{student.studentName}</p>
-                      <p className="text-xs md:text-sm text-text-secondary capitalize mt-0.5">
-                        {student.stage} - Level {student.level}
-                      </p>
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <FaExclamationTriangle className="w-3 h-3 text-error-500" />
-                        <p className="text-xs text-error-600 font-medium">
-                          {student.overdueMonths} month{student.overdueMonths > 1 ? 's' : ''} overdue
+                <div key={`${student.studentId}-${index}`} className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-b-0 gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-1.5 h-7 rounded-full bg-red-500/70 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-text-primary truncate">{student.studentName}</p>
+                      {(student.stageNumber || student.levelNumber) && (
+                        <p className="text-xs text-text-tertiary">
+                          {student.stageNumber ? `Stage ${student.stageNumber}` : ''}{student.levelNumber ? ` · L${student.levelNumber}` : ''}
                         </p>
-                      </div>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="font-bold text-error-600 text-sm md:text-base whitespace-nowrap">
-                        {formatCurrency(student.overdueAmount)}
-                      </p>
+                      )}
                     </div>
                   </div>
+                  <p className="text-sm font-semibold text-red-400 flex-shrink-0">{formatCurrency(student.overdueAmount)}</p>
                 </div>
               ))
             ) : (
               <div className="text-center py-8">
-                <FaCheckCircle className="w-10 h-10 text-accent-500 mx-auto mb-2" />
-                <p className="text-text-secondary text-sm">No overdue students! 🎉</p>
-                <p className="text-text-tertiary text-xs mt-1">All fees are up to date</p>
+                <CheckCircle2 className="w-8 h-8 text-text-tertiary mx-auto mb-2 opacity-20" />
+                <p className="text-text-tertiary text-xs">No overdue students</p>
               </div>
             )}
           </div>

@@ -1,27 +1,46 @@
-import { useState } from 'react';
 import { Toaster } from 'react-hot-toast';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import Layout from './components/layout/Layout';
+import Sidebar, { type TabType } from './components/layout/Sidebar';
 import StudentsList from './components/StudentsList.new';
+import StudentProfilePage from './components/students/StudentProfilePage';
 import FeesOverviewDashboard from './components/fees/FeesOverviewDashboard';
 import CourseConfigurationPanel from './components/courses/CourseConfigurationPanel';
 import BatchManagementPanel from './components/batches/BatchManagementPanel';
+import LeadsList from './components/leads/LeadsList';
 import { Login } from './components/Login';
 import LoadingSpinner from './components/ui/LoadingSpinner';
 import './App.css';
 
-type TabType = 'students' | 'fees' | 'courses' | 'batches';
+const ROUTE_TO_TAB: Record<string, TabType> = {
+  '/students': 'students',
+  '/fees': 'fees',
+  '/leads': 'leads',
+  '/courses': 'courses',
+  '/batches': 'batches',
+};
+
+const PAGE_TITLES: Record<TabType, string> = {
+  students: 'Students',
+  fees: 'Fees Overview',
+  leads: 'Leads',
+  courses: 'Course Stages',
+  batches: 'Batches',
+};
 
 function AppContent() {
   const { isAuthenticated, loading, login, user } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabType>('students');
+  const location = useLocation();
+  const navigate = useNavigate();
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <LoadingSpinner size="lg" />
-          <p className="mt-4 text-text-secondary">Loading...</p>
+          <p className="mt-4 text-text-secondary text-sm">Loading...</p>
         </div>
       </div>
     );
@@ -32,108 +51,73 @@ function AppContent() {
   }
 
   const isSuperAdmin = user?.role === 'superadmin';
+  const activeTab = ROUTE_TO_TAB[location.pathname] ?? 'students';
+  const pageTitle = location.pathname.startsWith('/students/')
+    ? 'Student Profile'
+    : PAGE_TITLES[activeTab];
+
+  const handleTabChange = (tab: TabType) => {
+    navigate(`/${tab}`);
+  };
 
   return (
-    <Layout>
-      {/* Navigation Tabs */}
-      <div className="mb-6">
-        <div className="flex space-x-1 bg-surface rounded-xl shadow-navy p-1.5 border border-primary-100">
-          <button
-            onClick={() => setActiveTab('students')}
-            className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-all duration-200 ${
-              activeTab === 'students'
-                ? 'bg-gradient-primary text-white shadow-glow'
-                : 'text-text-secondary hover:bg-primary-50 hover:text-primary-600'
-            }`}
-          >
-            Students
-          </button>
-          <button
-            onClick={() => setActiveTab('fees')}
-            className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-all duration-200 ${
-              activeTab === 'fees'
-                ? 'bg-gradient-primary text-white shadow-glow'
-                : 'text-text-secondary hover:bg-primary-50 hover:text-primary-600'
-            }`}
-          >
-            Fees Overview
-          </button>
-          {isSuperAdmin && (
-            <>
-              <button
-                onClick={() => setActiveTab('courses')}
-                className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-all duration-200 ${
-                  activeTab === 'courses'
-                    ? 'bg-gradient-primary text-white shadow-glow'
-                    : 'text-text-secondary hover:bg-primary-50 hover:text-primary-600'
-                }`}
-              >
-                Courses
-              </button>
-              <button
-                onClick={() => setActiveTab('batches')}
-                className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-all duration-200 ${
-                  activeTab === 'batches'
-                    ? 'bg-gradient-primary text-white shadow-glow'
-                    : 'text-text-secondary hover:bg-primary-50 hover:text-primary-600'
-                }`}
-              >
-                Batches
-              </button>
-            </>
-          )}
+    <div className="flex h-screen bg-background overflow-hidden">
+      <Sidebar
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        isSuperAdmin={isSuperAdmin}
+      />
+      <Layout pageTitle={pageTitle}>
+        <div className="animate-fade-in">
+          <Routes>
+            <Route path="/students" element={<StudentsList />} />
+            <Route path="/students/:id" element={<StudentProfilePage />} />
+            <Route path="/fees" element={<FeesOverviewDashboard />} />
+            <Route path="/leads" element={<LeadsList />} />
+            {isSuperAdmin && <Route path="/courses" element={<CourseConfigurationPanel />} />}
+            {isSuperAdmin && <Route path="/batches" element={<BatchManagementPanel />} />}
+            <Route path="*" element={<Navigate to="/students" replace />} />
+          </Routes>
         </div>
-      </div>
-
-      {/* Tab Content */}
-      <div className="animate-fade-in">
-        {activeTab === 'students' && <StudentsList />}
-        {activeTab === 'fees' && <FeesOverviewDashboard />}
-        {activeTab === 'courses' && isSuperAdmin && <CourseConfigurationPanel />}
-        {activeTab === 'batches' && isSuperAdmin && <BatchManagementPanel />}
-      </div>
-    </Layout>
+      </Layout>
+    </div>
   );
 }
 
 function App() {
   return (
-    <AuthProvider>
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          duration: 3000,
-          style: {
-            background: '#1e3a8a',
-            color: '#fff',
-            borderRadius: '12px',
-            padding: '16px',
-            boxShadow: '0 10px 25px -5px rgba(30, 58, 138, 0.3)',
-          },
-          success: {
+    <ThemeProvider>
+      <BrowserRouter>
+        <AuthProvider>
+        <Toaster
+          position="bottom-right"
+          toastOptions={{
             duration: 3000,
-            iconTheme: {
-              primary: '#10b981',
-              secondary: '#fff',
-            },
             style: {
-              background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+              background: '#1a1e28',
+              color: '#f0f2f7',
+              borderRadius: '10px',
+              padding: '12px 16px',
+              fontSize: '13px',
+              border: '1px solid rgba(255,255,255,0.07)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
             },
-          },
-          error: {
-            duration: 4000,
-            iconTheme: {
-              primary: '#ef4444',
-              secondary: '#fff',
+            success: {
+              duration: 3000,
+              iconTheme: { primary: '#059669', secondary: '#f0f2f7' },
+              style: { background: '#0d2318', borderColor: 'rgba(5,150,105,0.25)' },
             },
-            style: {
-              background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+            error: {
+              duration: 4000,
+              iconTheme: { primary: '#dc2626', secondary: '#f0f2f7' },
+              style: { background: '#200d0d', borderColor: 'rgba(220,38,38,0.25)' },
             },
-          },
-        }}
-      />
-      <AppContent />
-    </AuthProvider>
+          }}
+        />
+        <AppContent />
+      </AuthProvider>
+    </BrowserRouter>
+    </ThemeProvider>
   );
 }
 

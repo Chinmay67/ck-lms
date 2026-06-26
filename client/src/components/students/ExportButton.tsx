@@ -1,4 +1,4 @@
-import { FaDownload } from 'react-icons/fa';
+import { Download } from 'lucide-react';
 import Button from '../ui/Button';
 import { type Student } from '../../types/student';
 
@@ -66,7 +66,7 @@ const ExportButton = ({ students, filename = 'students-export' }: ExportButtonPr
 
   return (
     <Button variant="outline" onClick={exportToCSV}>
-      <FaDownload />
+      <Download className="w-4 h-4" />
       Export to CSV
     </Button>
   );
