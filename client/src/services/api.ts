@@ -19,7 +19,9 @@ export const TokenManager = {
 // Create axios instance with base configuration
 const api = axios.create({
   baseURL: env.API_BASE_URL,
-  timeout: env.REQUEST_TIMEOUT,
+  // Timeout is intentionally not applied for now. Keep VITE_REQUEST_TIMEOUT
+  // in env config so it can be re-enabled later if needed.
+  // timeout: env.REQUEST_TIMEOUT,
   headers: {
     'Content-Type': 'application/json',
   },
