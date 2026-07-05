@@ -32,6 +32,7 @@ const StudentRow = ({ student, isSelected, onSelect, onEdit, onToggleActive }: S
   };
 
   const getStageDisplayName = () => {
+    if (student.stageName) return student.stageName;
     if (typeof student.courseId === 'object') {
       const stage = student.courseId?.stages?.find((s) => s.stageNumber === student.stageNumber);
       if (stage) return stage.stageName;

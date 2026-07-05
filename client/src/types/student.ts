@@ -17,6 +17,7 @@ export interface Student {
   level?: 1 | 2 | 3;
   courseId?: string | { _id?: string; id?: string; displayName?: string; courseName?: string; stages?: Array<{ stageNumber: number; stageName: string }> } | null;
   stageNumber?: number | null;
+  stageName?: string | null;
   levelNumber?: number | null;
   batch?: string;
   batchId?: string | { _id?: string; id?: string; batchName?: string; batchCode?: string } | null;

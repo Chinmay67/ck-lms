@@ -235,9 +235,9 @@ const StudentsTable = ({
           sortedStudents.map((student) => {
             const studentId = (student as any).id || student._id;
             const isSelected = selectedStudents.includes(studentId);
-            const stageName = typeof student.courseId === 'object'
+            const stageName = student.stageName ?? (typeof student.courseId === 'object'
               ? student.courseId?.stages?.find((stage) => stage.stageNumber === student.stageNumber)?.stageName
-              : null;
+              : null);
             const levelName = student.levelNumber ?? student.level ?? student.skillLevel;
             const batchName = typeof student.batchId === 'object'
               ? student.batchId?.batchName || student.batchId?.batchCode

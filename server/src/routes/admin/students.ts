@@ -109,7 +109,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       .skip((page - 1) * limit)
       .limit(limit)
       .populate('batchId', 'batchName batchCode')
-      .populate('courseId', 'displayName courseName')
+      .populate('courseId', 'displayName courseName stages')
       .lean(),
   ]);
 
@@ -126,11 +126,15 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   });
   const overdueSet = new Set(overdueIds.map((id: any) => id.toString()));
 
-  const data = (students as any[]).map((s) => ({
-    ...s,
-    id: s._id.toString(),
-    hasOverdueFees: overdueSet.has(s._id.toString()),
-  }));
+  const data = (students as any[]).map((s) => {
+    const stageName = s.courseId?.stages?.find((stage: any) => stage.stageNumber === s.stageNumber)?.stageName;
+    return {
+      ...s,
+      id: s._id.toString(),
+      stageName,
+      hasOverdueFees: overdueSet.has(s._id.toString()),
+    };
+  });
 
   res.json({
     success: true,
