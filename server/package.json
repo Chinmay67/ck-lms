@@ -30,6 +30,8 @@
     "fix-payment-amounts": "tsx scripts/FixPaymentDateWithZeroAmount.ts --apply",
     "fix-payment-amounts:dry-run": "tsx scripts/FixPaymentDateWithZeroAmount.ts",
     "import:excel": "tsx src/scripts/import_excel_v2.ts",
+    "relink:chess": "tsx scripts/RelinkAllToChessCourse.ts",
+    "seed:chess": "tsx scripts/SeedChessCourse.ts",
     "seed:e2e": "tsx src/scripts/seed_e2e_admin_dataset.ts"
   },
   "dependencies": {

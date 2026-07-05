@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -56,20 +56,53 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
   // Debounce timeout ref
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const sortedCourses = useMemo(() => {
+    return [...courses]
+      .filter((course) => mode !== 'create' || course.isActive)
+      .map((course) => ({
+        ...course,
+        stages: [...(course.stages ?? [])]
+          .sort((a, b) => a.stageNumber - b.stageNumber)
+          .map((stage) => ({
+            ...stage,
+            levels: [...(stage.levels ?? [])].sort((a, b) => a.levelNumber - b.levelNumber),
+          })),
+      }))
+      .sort((a, b) => {
+        const displayOrderDiff = (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
+        if (displayOrderDiff !== 0) return displayOrderDiff;
+        return a.displayName.localeCompare(b.displayName);
+      });
+  }, [courses, mode]);
+
   // Derived: selected course object
-  const selectedCourse = courses.find((c) => (c.id || c._id) === formData.courseId) ?? null;
+  const selectedCourse = sortedCourses.find((c) => (c.id || c._id) === formData.courseId) ?? null;
   const selectedStage = selectedCourse?.stages?.find((s) => s.stageNumber === formData.stageNumber) ?? null;
   const selectedLevel = selectedStage?.levels.find((l) => l.levelNumber === formData.levelNumber) ?? null;
+  const showProgramSelector = mode === 'edit' || sortedCourses.length !== 1;
+  const singleProgram = mode === 'create' && sortedCourses.length === 1 ? sortedCourses[0] : null;
 
   // Fetch courses on open
   useEffect(() => {
     if (!isOpen) return;
     setLoadingCourses(true);
-    CourseAPI.getCourses(true)
+    CourseAPI.getCourses(mode === 'create')
       .then((res) => { if (res.success && res.data) setCourses(res.data); })
-      .catch(console.error)
+      .catch((error) => {
+        console.error(error);
+        setCourses([]);
+        setFormError('Failed to load courses. Please try again.');
+      })
       .finally(() => setLoadingCourses(false));
-  }, [isOpen]);
+  }, [isOpen, mode]);
+
+  useEffect(() => {
+    if (!isOpen || mode !== 'create' || !singleProgram || formData.courseId) return;
+    setFormData((prev) => ({
+      ...prev,
+      courseId: singleProgram.id || singleProgram._id || null,
+    }));
+  }, [formData.courseId, isOpen, mode, singleProgram]);
 
   // Fetch batches when courseId/stageNumber/levelNumber change (debounced)
   useEffect(() => {
@@ -242,9 +275,9 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
   };
 
   const stageLabel = selectedStage?.stageName ?? (formData.stageNumber != null ? `Stage ${formData.stageNumber}` : null);
-  const originalStageName = courses
-    .flatMap((c) => c.stages ?? [])
-    .find((s) => s.stageNumber === originalStageNumber)?.stageName ?? (originalStageNumber != null ? `Stage ${originalStageNumber}` : null);
+  const originalCourse = sortedCourses.find((c) => (c.id || c._id) === originalCourseId) ?? null;
+  const originalStageName = originalCourse?.stages
+    ?.find((s) => s.stageNumber === originalStageNumber)?.stageName ?? (originalStageNumber != null ? `Stage ${originalStageNumber}` : null);
 
   return (
     <Modal
@@ -360,29 +393,45 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
 
         {/* Academic Information */}
         <div>
-          <h4 className="text-base md:text-lg font-semibold text-text-primary mb-3 md:mb-4 pb-2 border-b border-white/7">Academic Information</h4>
+          <h4 className="text-base md:text-lg font-semibold text-text-primary mb-3 md:mb-4 pb-2 border-b border-white/7">Training Placement</h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
 
-            {/* Course */}
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-text-primary mb-1">Course *</label>
-              <select
-                name="courseId"
-                value={typeof formData.courseId === 'string' ? formData.courseId : ''}
-                onChange={handleChange}
-                required
-                disabled={loadingCourses || mode === 'edit'}
-                className="w-full px-3 md:px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-surface text-text-primary transition-all disabled:opacity-60"
-              >
-                <option value="">{loadingCourses ? 'Loading courses…' : 'Select a course'}</option>
-                {courses.map((c) => (
-                  <option key={c.id || c._id} value={c.id || c._id}>{c.displayName}</option>
-                ))}
-              </select>
-              {mode === 'edit' && (
-                <p className="text-xs text-text-tertiary mt-1">Course cannot be changed here — use the upgrade flow.</p>
-              )}
-            </div>
+            {/* Program */}
+            {showProgramSelector ? (
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-text-primary mb-1">Program *</label>
+                <select
+                  name="courseId"
+                  value={typeof formData.courseId === 'string' ? formData.courseId : ''}
+                  onChange={handleChange}
+                  required
+                  disabled={loadingCourses || mode === 'edit'}
+                  className="w-full px-3 md:px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-surface text-text-primary transition-all disabled:opacity-60"
+                >
+                  <option value="">{loadingCourses ? 'Loading programs…' : 'Select a program'}</option>
+                  {sortedCourses.map((c) => (
+                    <option key={c.id || c._id} value={c.id || c._id}>{c.displayName}</option>
+                  ))}
+                </select>
+                {mode === 'edit' && (
+                  <p className="text-xs text-text-tertiary mt-1">Program cannot be changed here — use the upgrade flow.</p>
+                )}
+              </div>
+            ) : (
+              <div className="sm:col-span-2 rounded-lg border border-white/10 bg-surface-alt px-3 py-2">
+                <p className="text-xs font-medium text-text-tertiary uppercase tracking-wide">Program</p>
+                <p className="text-sm font-semibold text-text-primary">{singleProgram?.displayName ?? 'No active program configured'}</p>
+              </div>
+            )}
+
+            {selectedStage && formData.levelNumber != null && (
+              <div className="sm:col-span-2 rounded-lg border border-primary-600/20 bg-primary-600/10 px-3 py-2">
+                <p className="text-xs font-medium text-primary-300">Selected placement</p>
+                <p className="text-sm font-semibold text-text-primary">
+                  {selectedStage.stageName} · Level {formData.levelNumber}
+                </p>
+              </div>
+            )}
 
             {/* Stage */}
             <div>
@@ -395,7 +444,10 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
                 disabled={!selectedCourse}
                 className="w-full px-3 md:px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-surface text-text-primary transition-all disabled:opacity-60"
               >
-                <option value="">Select a stage</option>
+                <option value="">{selectedCourse ? 'Select stage' : 'Select program first'}</option>
+                {selectedCourse && (selectedCourse.stages ?? []).length === 0 && (
+                  <option disabled>No stages configured</option>
+                )}
                 {(selectedCourse?.stages ?? []).map((s) => (
                   <option key={s.stageNumber} value={s.stageNumber}>{s.stageName}</option>
                 ))}
@@ -413,9 +465,14 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
                 disabled={!selectedStage}
                 className="w-full px-3 md:px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-surface text-text-primary transition-all disabled:opacity-60"
               >
-                <option value="">Select a level</option>
+                <option value="">{selectedStage ? 'Select level' : 'Select stage first'}</option>
+                {selectedStage && (selectedStage.levels ?? []).length === 0 && (
+                  <option disabled>No levels configured</option>
+                )}
                 {(selectedStage?.levels ?? []).map((l) => (
-                  <option key={l.levelNumber} value={l.levelNumber}>Level {l.levelNumber} — ₹{l.feeAmount.toLocaleString()}/month</option>
+                  <option key={l.levelNumber} value={l.levelNumber}>
+                    {selectedStage?.stageName} Level {l.levelNumber} — ₹{l.feeAmount.toLocaleString()}/month
+                  </option>
                 ))}
               </select>
             </div>
@@ -441,7 +498,7 @@ const StudentModal = ({ isOpen, onClose, onSubmit, student, mode }: StudentModal
                (formData.discountType ?? 'none') === 'none' ? (
                 <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
                   <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
-                  Fee overridden — course rate is ₹{(formData.grossFee ?? 0).toLocaleString()}. This will be flagged on the enrollment.
+                  Fee overridden — standard rate is ₹{(formData.grossFee ?? 0).toLocaleString()}. This will be flagged on the enrollment.
                 </p>
               ) : (
                 <p className="text-xs text-text-tertiary mt-1">Auto-filled from level; override if a custom rate applies.</p>

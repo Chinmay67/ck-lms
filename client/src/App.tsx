@@ -26,7 +26,7 @@ const PAGE_TITLES: Record<TabType, string> = {
   students: 'Students',
   fees: 'Fees Overview',
   leads: 'Leads',
-  courses: 'Course Stages',
+  courses: 'Program Setup',
   batches: 'Batches',
 };
 

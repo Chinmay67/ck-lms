@@ -172,10 +172,10 @@ const BatchModal: React.FC<BatchModalProps> = ({ batch, onClose, onSuccess }) =>
           </div>
         </div>
 
-        {/* Course, Stage, Level */}
+        {/* Program, Stage, Level */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Course *</label>
+            <label className="block text-sm font-medium text-text-secondary mb-1">Program *</label>
             <select
               className="w-full border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary-400 disabled:opacity-60"
               value={formData.courseId}
@@ -183,12 +183,12 @@ const BatchModal: React.FC<BatchModalProps> = ({ batch, onClose, onSuccess }) =>
               required
               disabled={isEdit}
             >
-              <option value="">{loadingCourses ? 'Loading…' : 'Select course'}</option>
+              <option value="">{loadingCourses ? 'Loading…' : 'Select program'}</option>
               {courses.map((c) => (
                 <option key={c.id || c._id} value={c.id || c._id}>{c.displayName}</option>
               ))}
             </select>
-            {isEdit && <p className="text-xs text-text-tertiary mt-1">Course cannot be changed after creation.</p>}
+            {isEdit && <p className="text-xs text-text-tertiary mt-1">Program cannot be changed after creation.</p>}
           </div>
 
           <div>

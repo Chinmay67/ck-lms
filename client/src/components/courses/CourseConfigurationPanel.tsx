@@ -51,7 +51,7 @@ const CourseConfigurationPanel = () => {
   // Course CRUD
   const openCreateCourse = () => {
     setEditingCourse(null);
-    setCourseForm({ courseName: '', displayName: '', description: '', isActive: true, displayOrder: courses.length });
+    setCourseForm({ courseName: '', displayName: '', description: '', isActive: true, displayOrder: courses.length || 1 });
     setShowCourseModal(true);
   };
   const openEditCourse = (c: Course) => {
@@ -64,10 +64,10 @@ const CourseConfigurationPanel = () => {
     try {
       if (editingCourse) {
         await AdminCoursesAPI.update(editingCourse.id || editingCourse._id!, { displayName: courseForm.displayName, description: courseForm.description, displayOrder: courseForm.displayOrder, isActive: courseForm.isActive });
-        toast.success('Course updated');
+        toast.success('Program updated');
       } else {
         await AdminCoursesAPI.create({ courseName: courseForm.courseName.toLowerCase().trim(), displayName: courseForm.displayName, description: courseForm.description, displayOrder: courseForm.displayOrder });
-        toast.success('Course created');
+        toast.success('Program created');
       }
       setShowCourseModal(false); fetchCourses();
     } catch (e: any) { toast.error(e.response?.data?.error || e.message || 'Failed'); }
@@ -145,51 +145,47 @@ const CourseConfigurationPanel = () => {
   return (
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-        <h2 className="text-xl md:text-2xl font-bold text-text-primary">Course Stages</h2>
+        <h2 className="text-xl md:text-2xl font-bold text-text-primary">Program Setup</h2>
         {courses.length === 0 && (
-          <button onClick={openCreateCourse} className={btnPrimary}>+ Add Course</button>
+          <button onClick={openCreateCourse} className={btnPrimary}>+ Add Program</button>
         )}
       </div>
 
       {courses.length === 0 ? (
         <div className="text-center py-12 bg-surface rounded-lg border border-border">
-          <p className="text-text-tertiary text-sm">No courses yet. Click "Add Course" to create one.</p>
+          <p className="text-text-tertiary text-sm">No program yet. Click "Add Program" to create one.</p>
         </div>
       ) : (
         <div className="space-y-5">
           {courses.map((course) => {
             const cId = course.id || course._id!;
             const stages = course.stages ?? [];
-            const singleCourse = courses.length === 1;
             return (
               <div key={cId} className="bg-surface rounded-lg border border-white/7 border-l-4 border-l-primary-600 p-4">
-                {/* Course header — only shown when multiple courses exist */}
-                {!singleCourse && (
-                  <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-4">
-                    <div>
-                      <h3 className="text-base md:text-lg font-bold text-text-primary">{course.displayName}</h3>
-                      <p className="text-xs text-text-tertiary mt-0.5">ID: {course.courseName} · Order: {course.displayOrder}</p>
-                      {course.description && <p className="text-sm text-text-secondary mt-1">{course.description}</p>}
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${course.isActive ? 'bg-success-600/15 text-success-400 border-success-500/20' : 'bg-white/6 border-white/10 text-text-secondary'}`}>{course.isActive ? 'Active' : 'Inactive'}</span>
-                      <button onClick={() => openEditCourse(course)} className="p-1.5 text-primary-600 hover:bg-surface-hover rounded-lg" title="Edit">
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => deleteCourse(course)} className="p-1.5 text-error-400 hover:bg-error-600/15 rounded-lg" title="Delete">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-4">
+                  <div>
+                    <h3 className="text-base md:text-lg font-bold text-text-primary">{course.displayName}</h3>
+                    <p className="text-xs text-text-tertiary mt-0.5">ID: {course.courseName} · Order: {course.displayOrder}</p>
+                    {course.description && <p className="text-sm text-text-secondary mt-1">{course.description}</p>}
                   </div>
-                )}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${course.isActive ? 'bg-success-600/15 text-success-400 border-success-500/20' : 'bg-white/6 border-white/10 text-text-secondary'}`}>{course.isActive ? 'Active' : 'Inactive'}</span>
+                    <button onClick={() => openEditCourse(course)} className="p-1.5 text-primary-600 hover:bg-surface-hover rounded-lg" title="Edit">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => deleteCourse(course)} className="p-1.5 text-error-400 hover:bg-error-600/15 rounded-lg" title="Delete">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
 
-                <div className={`${!singleCourse ? 'border-t border-white/7 pt-3' : ''} space-y-3`}>
+                <div className="border-t border-white/7 pt-3 space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm font-semibold text-text-primary">Course Stages ({stages.length})</span>
-                    <button onClick={() => openAddStage(cId)} className="text-xs text-primary-600 hover:text-primary-300 font-medium">+ Add Course Stage</button>
+                    <span className="text-sm font-semibold text-text-primary">Stages ({stages.length})</span>
+                    <button onClick={() => openAddStage(cId)} className="text-xs text-primary-600 hover:text-primary-300 font-medium">+ Add Stage</button>
                   </div>
                   {stages.length === 0 ? (
-                    <p className="text-xs text-text-tertiary italic">No course stages yet — add a course stage to define levels and fees.</p>
+                    <p className="text-xs text-text-tertiary italic">No stages yet — add a stage to define levels and fees.</p>
                   ) : stages.map((stage) => (
                     <div key={stage.stageNumber} className="border border-border rounded-lg p-3 bg-surface-alt">
                       <div className="flex justify-between items-start mb-2">
@@ -215,10 +211,10 @@ const CourseConfigurationPanel = () => {
                           </div>
                         </div>
                         <div className="flex gap-1">
-                          <button onClick={() => openEditStage(cId, stage.stageNumber, stage.stageName)} className="p-1 text-primary-600 hover:bg-primary-600/15 rounded" title="Rename course stage">
+                          <button onClick={() => openEditStage(cId, stage.stageNumber, stage.stageName)} className="p-1 text-primary-600 hover:bg-primary-600/15 rounded" title="Rename stage">
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => deleteStage(cId, stage.stageNumber, stage.stageName)} className="p-1 text-error-400 hover:bg-error-600/15 rounded" title="Delete course stage">
+                          <button onClick={() => deleteStage(cId, stage.stageNumber, stage.stageName)} className="p-1 text-error-400 hover:bg-error-600/15 rounded" title="Delete stage">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -266,16 +262,16 @@ const CourseConfigurationPanel = () => {
       )}
 
       {showCourseModal && (
-        <Modal isOpen={showCourseModal} title={editingCourse ? 'Edit Course' : 'Add Course'} onClose={() => setShowCourseModal(false)} size="sm">
+        <Modal isOpen={showCourseModal} title={editingCourse ? 'Edit Program' : 'Add Program'} onClose={() => setShowCourseModal(false)} size="sm">
           <form onSubmit={submitCourse} className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Course Name (ID) *</label>
-              <input className={inputCls} value={courseForm.courseName} onChange={(e) => setCourseForm({ ...courseForm, courseName: e.target.value.toLowerCase() })} placeholder="e.g., chess-standard" required disabled={!!editingCourse} />
+              <label className="block text-xs font-medium text-text-secondary mb-1">Program ID *</label>
+              <input className={inputCls} value={courseForm.courseName} onChange={(e) => setCourseForm({ ...courseForm, courseName: e.target.value.toLowerCase() })} placeholder="program-id" required disabled={!!editingCourse} />
               <p className="text-xs text-text-tertiary mt-1">Lowercase unique identifier, cannot be changed after creation.</p>
             </div>
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Display Name *</label>
-              <input className={inputCls} value={courseForm.displayName} onChange={(e) => setCourseForm({ ...courseForm, displayName: e.target.value })} placeholder="e.g., Chess Standard Training" required />
+              <label className="block text-xs font-medium text-text-secondary mb-1">Program Name *</label>
+              <input className={inputCls} value={courseForm.displayName} onChange={(e) => setCourseForm({ ...courseForm, displayName: e.target.value })} placeholder="Program name" required />
             </div>
             <div>
               <label className="block text-xs font-medium text-text-secondary mb-1">Description</label>
@@ -302,15 +298,15 @@ const CourseConfigurationPanel = () => {
       )}
 
       {showStageModal && (
-        <Modal isOpen={showStageModal} title={editingStageNum !== null ? 'Rename Course Stage' : 'Add Course Stage'} onClose={() => setShowStageModal(false)} size="sm">
+        <Modal isOpen={showStageModal} title={editingStageNum !== null ? 'Rename Stage' : 'Add Stage'} onClose={() => setShowStageModal(false)} size="sm">
           <form onSubmit={submitStage} className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Course Stage Name *</label>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Stage Name *</label>
               <input className={inputCls} value={stageForm.stageName} onChange={(e) => setStageForm({ stageName: e.target.value })} placeholder="e.g., Beginner, Intermediate, Advanced" required autoFocus />
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t border-border">
               <button type="button" onClick={() => setShowStageModal(false)} className={btnGhost}>Cancel</button>
-              <button type="submit" className={btnPrimary} disabled={submitting}>{submitting ? 'Saving…' : editingStageNum !== null ? 'Rename' : 'Add Course Stage'}</button>
+              <button type="submit" className={btnPrimary} disabled={submitting}>{submitting ? 'Saving…' : editingStageNum !== null ? 'Rename' : 'Add Stage'}</button>
             </div>
           </form>
         </Modal>

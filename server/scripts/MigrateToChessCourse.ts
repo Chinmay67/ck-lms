@@ -68,7 +68,7 @@ async function migrate() {
   const batches = db.collection('batches');
   const enrollments = db.collection('enrollments');
   const invoices = db.collection('invoices');
-  const students = db.collection('studentv2s');
+  const students = db.collection('students');
 
   // ── 1. Find superadmin for createdBy ──────────────────────
   const users = db.collection('users');
@@ -96,14 +96,14 @@ async function migrate() {
     console.log(`\n♻️  Chess course already exists (${chessCourse._id}), updating stages/fees…`);
     await courses.updateOne(
       { _id: chessCourse._id },
-      { $set: { stages: STAGES, displayName: 'Chess Training', isActive: true } },
+      { $set: { stages: STAGES, displayName: 'Chess', isActive: true } },
     );
   } else {
     console.log('\n🆕 Creating Chess course…');
     const result = await courses.insertOne({
       courseName: 'chess',
-      displayName: 'Chess Training',
-      description: 'Comprehensive chess training from beginner to advanced level.',
+      displayName: 'Chess',
+      description: 'Chess training program.',
       isActive: true,
       displayOrder: 1,
       stages: STAGES,

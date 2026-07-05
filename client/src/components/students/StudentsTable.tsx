@@ -171,7 +171,7 @@ const StudentsTable = ({
                   onClick={() => handleSort('stage')}
                   className="flex items-center gap-1.5 text-xs font-semibold text-text-tertiary uppercase tracking-wide hover:text-text-primary transition-colors"
                 >
-                  Course
+                  Stage
                   {getSortIcon('stage')}
                 </button>
               </th>
@@ -235,9 +235,6 @@ const StudentsTable = ({
           sortedStudents.map((student) => {
             const studentId = (student as any).id || student._id;
             const isSelected = selectedStudents.includes(studentId);
-            const courseName = typeof student.courseId === 'object' && student.courseId?.displayName
-              ? student.courseId.displayName
-              : student.stage || (student.stageNumber ? `Stage ${student.stageNumber}` : '—');
             const stageName = typeof student.courseId === 'object'
               ? student.courseId?.stages?.find((stage) => stage.stageNumber === student.stageNumber)?.stageName
               : null;
@@ -288,10 +285,6 @@ const StudentsTable = ({
                       <span className="text-text-secondary text-xs">{student.phone}</span>
                     </div>
                   )}
-                  <div className="flex justify-between">
-                    <span className="text-text-tertiary text-xs">Course</span>
-                    <span className="text-text-secondary text-xs capitalize">{courseName}</span>
-                  </div>
                   <div className="flex justify-between">
                     <span className="text-text-tertiary text-xs">Stage / Level</span>
                     <span className="text-text-secondary text-xs">

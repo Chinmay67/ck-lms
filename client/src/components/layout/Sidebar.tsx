@@ -25,7 +25,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'students', label: 'Students', icon: Users },
   { id: 'fees', label: 'Fees', icon: DollarSign },
   { id: 'leads', label: 'Leads', icon: UserCheck },
-  { id: 'courses', label: 'Course Stages', icon: BookOpen, superAdminOnly: true },
+  { id: 'courses', label: 'Program Setup', icon: BookOpen, superAdminOnly: true },
   { id: 'batches', label: 'Batches', icon: LayoutGrid, superAdminOnly: true },
 ];
 

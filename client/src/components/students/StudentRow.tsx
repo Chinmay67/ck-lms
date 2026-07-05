@@ -31,13 +31,6 @@ const StudentRow = ({ student, isSelected, onSelect, onEdit, onToggleActive }: S
     }
   };
 
-  const getCourseDisplayName = () => {
-    if (typeof student.courseId === 'object' && student.courseId?.displayName) return student.courseId.displayName;
-    if (student.stage) return student.stage.charAt(0).toUpperCase() + student.stage.slice(1);
-    if (student.stageNumber) return `Stage ${student.stageNumber}`;
-    return '-';
-  };
-
   const getStageDisplayName = () => {
     if (typeof student.courseId === 'object') {
       const stage = student.courseId?.stages?.find((s) => s.stageNumber === student.stageNumber);
@@ -124,12 +117,9 @@ const StudentRow = ({ student, isSelected, onSelect, onEdit, onToggleActive }: S
         </div>
       </td>
 
-      {/* Course */}
+      {/* Stage */}
       <td className="px-4 py-3 w-32 min-w-[100px]">
-        <div className="text-sm text-text-primary font-medium truncate" title={getCourseDisplayName()}>
-          {getCourseDisplayName()}
-        </div>
-        <div className="text-xs text-text-tertiary truncate" title={getStageDisplayName()}>
+        <div className="text-sm text-text-primary font-medium truncate" title={getStageDisplayName()}>
           {getStageDisplayName()}
         </div>
       </td>

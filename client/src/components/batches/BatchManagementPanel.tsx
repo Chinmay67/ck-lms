@@ -281,9 +281,9 @@ export const BatchManagementPanel: React.FC = () => {
             </select>
           </div>
 
-          {/* Course Stage — dynamic from course */}
+          {/* Stage */}
           <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Course Stage</label>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Stage</label>
             <select
               className="w-full h-9 bg-surface-alt border border-white/10 rounded-lg px-3 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-400 hover:border-white/20 transition-colors"
               value={selectedStageNumber}

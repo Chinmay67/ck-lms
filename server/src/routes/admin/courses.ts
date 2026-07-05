@@ -12,8 +12,9 @@ const requireSuperAdmin = authorize('superadmin');
 
 // ── List all courses ──────────────────────────────────────────────
 
-router.get('/', asyncHandler(async (_req: Request, res: Response) => {
-  const courses = await Course.find().sort({ displayOrder: 1, courseName: 1 });
+router.get('/', asyncHandler(async (req: Request, res: Response) => {
+  const filter = req.query.activeOnly === 'true' ? { isActive: true } : {};
+  const courses = await Course.find(filter).sort({ displayOrder: 1, courseName: 1 });
   res.json({ success: true, data: courses, timestamp: new Date().toISOString() });
 }));
 
